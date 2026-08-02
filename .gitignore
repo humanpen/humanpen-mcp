@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.log
+
+# Internal maintenance notes: useful locally, not part of what we publish.
+CLAUDE.md
+AGENTS.md

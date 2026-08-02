@@ -1,0 +1,71 @@
+{
+  "name": "humanpen-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for HumanPen - lower AI-detection scores, fix citations, condense and translate document files, keeping formatting intact.",
+  "type": "module",
+  "bin": {
+    "humanpen-mcp": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "README.zh-CN.md",
+    "README.ja.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "check:api": "node check-api.mjs",
+    "prepare": "tsup",
+    "prepublishOnly": "npm run build",
+    "dev": "tsup --watch"
+  },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "humanize",
+    "ai-detector",
+    "ai-detection",
+    "turnitin",
+    "ithenticate",
+    "citation-format",
+    "apa",
+    "mla",
+    "ieee",
+    "gbt7714",
+    "document-translation",
+    "condense",
+    "docx",
+    "pptx",
+    "claude",
+    "codex",
+    "cursor",
+    "opencode",
+    "humanpen"
+  ],
+  "author": "HumanPen",
+  "license": "Apache-2.0",
+  "homepage": "https://humanpen.net",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/humanpen/humanpen-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/humanpen/humanpen-mcp/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  }
+}

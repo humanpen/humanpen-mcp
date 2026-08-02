@@ -1,0 +1,19 @@
+# Smithery lets a user supply the key once on the web and install into any
+# client from there - the convenience of a one-click install without the key
+# ever appearing in a URL.
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    required: [HUMANPEN_API_KEY]
+    properties:
+      HUMANPEN_API_KEY:
+        type: string
+        title: HumanPen API key
+        description: "Create one at https://humanpen.net/settings - new accounts get 100 free credits."
+  commandFunction:
+    - npx
+    - -y
+    - humanpen-mcp
+  env:
+    HUMANPEN_API_KEY: "{{config.HUMANPEN_API_KEY}}"
