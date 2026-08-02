@@ -146,7 +146,10 @@ server.registerTool(
     description:
       'Rewrite a .docx or .pptx so it reads as human-written and scores lower on AI detectors, ' +
       'keeping meaning, citations, tables and layout. Optionally pass a Turnitin/iThenticate AI ' +
-      'report to rewrite only the passages it flagged. Saves the result next to the source and ' +
+      'report to rewrite only the passages it flagged. If a fresh report still flags the result, ' +
+      'run this tool again on the rewritten file with that new report - only the still-flagged ' +
+      'passages are touched, and balanced remains the right strategy for the second pass. ' +
+      'Saves the result next to the source and ' +
       'returns its path. COSTS CREDITS at 100 per 1,000 words processed (10 minimum) - say so and get agreement first.',
     inputSchema: {
       document_path: z.string().describe('Absolute path to the .docx or .pptx to rewrite'),
