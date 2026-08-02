@@ -23,7 +23,7 @@ if (!apiKey) {
   // written there corrupts the protocol.
   console.error(
     'HUMANPEN_API_KEY is not set.\n' +
-      'Create a key at https://humanpen.net/settings (new accounts get 100 free credits),\n' +
+      'Create a key at https://humanpen.net/settings/api-keys (new accounts get 100 free credits),\n' +
       'then set it in your MCP client config, e.g. "env": { "HUMANPEN_API_KEY": "hp_..." }.',
   );
   process.exit(1);
@@ -273,9 +273,11 @@ server.registerTool(
       const report = await client.parseReport(report_path, type);
       return text({
         report_type: report.report_type,
-        // Null means no figure was given - a report can print "*" when the
-        // submission is too short to assess. It is not zero, and saying "0%
-        // AI" from it would be a claim nobody made.
+        // Null means the report printed "*" rather than a number. Turnitin
+        // does that whenever AI writing is under 20%, a band it refuses to
+        // quantify because of false positives - so null is usually good news,
+        // not a missing result. It is never zero, and reporting "0% AI" from
+        // it would be a claim nobody made.
         ai_percent: report.ai_percent,
         page_count: report.page_count,
         segment_count: report.segment_count,

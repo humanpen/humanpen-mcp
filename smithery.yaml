@@ -10,7 +10,7 @@ startCommand:
       HUMANPEN_API_KEY:
         type: string
         title: HumanPen API key
-        description: "Create one at https://humanpen.net/settings - new accounts get 100 free credits."
+        description: "Create one at https://humanpen.net/settings/api-keys - new accounts get 100 free credits."
   commandFunction:
     - npx
     - -y

@@ -1,9 +1,10 @@
 # humanpen-mcp
 
-**AI エージェントに、実際の文書を扱う力を。** Claude、Codex、Cursor をはじめ
-あらゆる MCP クライアントから、ディスク上の `.docx` / `.pptx` / `.pdf` を直接
-処理できる MCP サーバーです。AI 検出スコアの低減、引用形式の変換、指定字数への
-要約、翻訳——レイアウト、表、画像、引用、数式はそのまま保たれます。
+**AI エージェントに、実際の文書を扱う力を。** [HumanPen](https://humanpen.net) の
+MCP サーバーです。Claude、Codex、Cursor をはじめあらゆる MCP クライアントから、
+ディスク上の `.docx` / `.pptx` / `.pdf` を直接処理できます。AI 検出スコアの低減、
+引用形式の変換、指定字数への要約、翻訳——レイアウト、表、画像、引用、数式は
+そのまま保たれます。
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/Model_Context_Protocol-stdio-000000.svg)](https://modelcontextprotocol.io)
@@ -11,8 +12,10 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md) · 日本語
 
+[公式サイト](https://humanpen.net) · [料金](https://humanpen.net/pricing) · [開発者ドキュメント](https://humanpen.net/developers)
+
 ```bash
-claude mcp add humanpen -e HUMANPEN_API_KEY=hp_your_key -- npx -y humanpen-mcp
+claude mcp add humanpen -s user -e HUMANPEN_API_KEY=hp_your_key -- npx -y humanpen-mcp
 ```
 
 > *「これが論文と Turnitin レポート。指摘された箇所だけ書き直して、参考文献は
@@ -43,10 +46,9 @@ claude mcp add humanpen -e HUMANPEN_API_KEY=hp_your_key -- npx -y humanpen-mcp
 
 ## API キーの取得
 
-<https://humanpen.net/settings> で作成できます。新規アカウントには 100
-クレジット（1,000 語程度の文書 1 本分）が付きます。料金は**実際に処理された**
-1,000 語あたり 100 クレジット、1 ジョブの最低額は 10 クレジットです。
-**失敗・キャンセルしたジョブは課金されません。**
+<https://humanpen.net> で登録し、<https://humanpen.net/settings/api-keys> で
+キーを作成します。新規アカウントには無料クレジットが付くので、文書を 1 本
+通して結果を確かめられます。
 
 キーは環境変数に置き、URL には決して入れません。URL はサーバーログ、プロキシ
 ログ、シェル履歴、スクリーンショットに残ります。
@@ -57,14 +59,18 @@ claude mcp add humanpen -e HUMANPEN_API_KEY=hp_your_key -- npx -y humanpen-mcp
 <summary><b>Claude Code</b></summary>
 
 ```bash
-claude mcp add humanpen -e HUMANPEN_API_KEY=hp_your_key -- npx -y humanpen-mcp
+claude mcp add humanpen -s user -e HUMANPEN_API_KEY=hp_your_key -- npx -y humanpen-mcp
 ```
+
+`-s user` ですべてのプロジェクトから使えます。既定の `local` はコマンドを実行した
+ディレクトリでしか読み込まれず、別の場所で Claude Code を開くとインストールに
+失敗したように見えます。
 
 お使いのバージョンが `-e` を受け付けない場合（[上流で報告済み](https://github.com/anthropics/claude-code/issues/62332)）は
 JSON 形式で：
 
 ```bash
-claude mcp add-json humanpen '{"command":"npx","args":["-y","humanpen-mcp"],"env":{"HUMANPEN_API_KEY":"hp_your_key"}}'
+claude mcp add-json humanpen -s user '{"command":"npx","args":["-y","humanpen-mcp"],"env":{"HUMANPEN_API_KEY":"hp_your_key"}}'
 ```
 </details>
 
@@ -82,9 +88,40 @@ env = { HUMANPEN_API_KEY = "hp_your_key" }
 </details>
 
 <details>
+<summary><b>CodeBuddy / WorkBuddy</b></summary>
+
+```bash
+codebuddy mcp add --scope user humanpen -- npx -y humanpen-mcp
+```
+
+設定で `${VAR}` 展開が使えるため、キーを環境変数に置いたままにできます：
+
+```json
+{ "mcpServers": { "humanpen": {
+  "command": "npx", "args": ["-y", "humanpen-mcp"],
+  "env": { "HUMANPEN_API_KEY": "${HUMANPEN_API_KEY}" }
+} } }
+```
+
+全体は `~/.codebuddy/.mcp.json`、プロジェクト単位は `<project>/.mcp.json`。
+</details>
+
+<details>
+<summary><b>Gemini CLI</b></summary>
+
+`gemini mcp add` がありますが、引数の順序はバージョンによって異なります——
+`gemini mcp add --help` が表示する usage に従ってください。キーは
+`-e HUMANPEN_API_KEY=...`、スコープは `-s user`（既定の `project` は実行した
+ディレクトリのみ）。
+</details>
+
+<details>
 <summary><b>Claude Desktop</b></summary>
 
-`claude_desktop_config.json` に：
+`claude_desktop_config.json` に。**`npx` は絶対パスで指定してください**——
+`which npx` の結果を貼ります。デスクトップアプリは OS から最小限の `PATH` で
+起動されるため、端末で動く短い名前がここでは見つからないことが多く、症状は
+「ツールが現れない」だけです。
 
 ```json
 {
@@ -194,9 +231,24 @@ MCP クライアントであれば何でも動きます。これは `npx -y huma
 注記を返します。いずれにせよサーバー側の処理は続くので、早く返っても失われる
 ものはありません。
 
-**`ai_percent` は `null` になりえます。そして `null` は 0 ではありません。**
-提出文が短すぎて評価できない場合、レポートは数値ではなく `*` を出力します。
-これを「AI 率 0%」と報告するのは、誰もしていない主張をすることになります。
+**`ai_percent` が `null` になるのは、多くの場合よい知らせです。** AI 検出率が
+**20% を下回る**とき、Turnitin は数値ではなく `*` を出力します。その帯域は
+誤検出が多すぎるため、数値を出さない方針だからです。つまり `null` は「20% 未満、
+Turnitin はそれ以上言わない」であって、0 でも「結果なし」でもありません。
+
+## よくある質問
+
+**Turnitin の AI 率は下がりますか。**
+`balanced` なら通常 1 回で 20% 未満——Turnitin が数値をやめて `*` を出す境目——
+まで下がります。届かなければ、結果と新しいレポートをもう一度渡せば、まだ指摘の
+ある箇所だけが書き直されます。
+
+**iThenticate のレポートにも対応していますか。**
+はい。どちらも渡せます。形式はファイルから判別します。
+
+**文書はモデルのコンテキストに送られますか。**
+いいえ。ファイルをアップロードし、パスを返すだけです。40 ページの論文でも
+トークンは消費しません。
 
 ## 開発
 
@@ -216,7 +268,7 @@ JSON-RPC を話します。関数が返ることではなく、プロトコル�
 - [API ドキュメント](https://api.humanpen.net/v1/docs.md) ·
   [OpenAPI スキーマ](https://api.humanpen.net/v1/openapi.json)
 - [humanpen-skill](https://github.com/humanpen/humanpen-skill) — 同じ機能を
-  Claude Code スキルとして。サーバーを動かしたくない場合はこちら
+  Agent Skill として。サーバーを動かしたくない場合はこちら
 - [humanpen.net](https://humanpen.net)
 
 Apache-2.0

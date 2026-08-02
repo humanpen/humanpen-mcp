@@ -1,9 +1,9 @@
 # humanpen-mcp
 
-**让你的 AI Agent 真正会处理文档。** 一个 MCP server，让 Claude、Codex、Cursor
-以及任何 MCP 客户端能直接对硬盘上的 `.docx`、`.pptx`、`.pdf` 动手：降低 AI 检测
-率、转换参考文献格式、按字数缩写、或者翻译——排版、表格、图片、引文和公式全部
-保持原样。
+**让你的 AI Agent 真正会处理文档。** [HumanPen](https://humanpen.net) 的 MCP
+server。让 Claude、Codex、Cursor 以及任何 MCP 客户端直接对硬盘上的 `.docx`、
+`.pptx`、`.pdf` 动手：降低 AI 检测率、转换参考文献格式、按字数缩写、或者翻译——
+排版、表格、图片、引文和公式全部保持原样。
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/Model_Context_Protocol-stdio-000000.svg)](https://modelcontextprotocol.io)
@@ -11,8 +11,10 @@
 
 [English](README.md) · 简体中文 · [日本語](README.ja.md)
 
+[官网](https://humanpen.net) · [价格](https://humanpen.net/pricing) · [开发者文档](https://humanpen.net/developers)
+
 ```bash
-claude mcp add humanpen -e HUMANPEN_API_KEY=hp_your_key -- npx -y humanpen-mcp
+claude mcp add humanpen -s user -e HUMANPEN_API_KEY=hp_your_key -- npx -y humanpen-mcp
 ```
 
 > *「这是我的论文和 Turnitin 报告——只改被标红的部分，然后把参考文献转成 IEEE 格式。」*
@@ -38,9 +40,8 @@ claude mcp add humanpen -e HUMANPEN_API_KEY=hp_your_key -- npx -y humanpen-mcp
 
 ## 获取 API Key
 
-在 <https://humanpen.net/settings> 创建。新账号赠送 100 积分——够处理一篇 1000 词
-的文档。计费为**实际处理**每 1000 词 100 积分，每个任务最低 10 积分。
-**失败和取消的任务不计费。**
+在 <https://humanpen.net> 注册，然后到 <https://humanpen.net/settings/api-keys>
+创建 key。新账号有赠送积分，够跑一篇文档看看效果。
 
 Key 放在环境变量里，绝不放进 URL——URL 会留在服务端日志、代理日志、shell 历史和
 截图里。
@@ -51,14 +52,17 @@ Key 放在环境变量里，绝不放进 URL——URL 会留在服务端日志�
 <summary><b>Claude Code</b></summary>
 
 ```bash
-claude mcp add humanpen -e HUMANPEN_API_KEY=hp_your_key -- npx -y humanpen-mcp
+claude mcp add humanpen -s user -e HUMANPEN_API_KEY=hp_your_key -- npx -y humanpen-mcp
 ```
+
+`-s user` 让它在所有项目里都可用。默认的 `local` 只在你执行命令的那个目录下加载，
+换个文件夹打开 Claude Code 就找不到它了，看起来像装失败。
 
 如果你的版本不认 `-e`（[上游已有反馈](https://github.com/anthropics/claude-code/issues/62332)），
 用 JSON 形式：
 
 ```bash
-claude mcp add-json humanpen '{"command":"npx","args":["-y","humanpen-mcp"],"env":{"HUMANPEN_API_KEY":"hp_your_key"}}'
+claude mcp add-json humanpen -s user '{"command":"npx","args":["-y","humanpen-mcp"],"env":{"HUMANPEN_API_KEY":"hp_your_key"}}'
 ```
 </details>
 
@@ -76,9 +80,38 @@ env = { HUMANPEN_API_KEY = "hp_your_key" }
 </details>
 
 <details>
+<summary><b>CodeBuddy / WorkBuddy</b></summary>
+
+```bash
+codebuddy mcp add --scope user humanpen -- npx -y humanpen-mcp
+```
+
+它的配置支持 `${VAR}` 展开，所以密钥可以留在环境变量里、不落进文件：
+
+```json
+{ "mcpServers": { "humanpen": {
+  "command": "npx", "args": ["-y", "humanpen-mcp"],
+  "env": { "HUMANPEN_API_KEY": "${HUMANPEN_API_KEY}" }
+} } }
+```
+
+全局写 `~/.codebuddy/.mcp.json`，单项目写 `<项目根>/.mcp.json`。
+</details>
+
+<details>
+<summary><b>Gemini CLI</b></summary>
+
+它有 `gemini mcp add`，但参数顺序各版本不同——跑 `gemini mcp add --help`，照它
+打印的 usage 来。密钥用 `-e HUMANPEN_API_KEY=...`，范围用 `-s user`；它默认是
+`project`，只在你执行命令的那个目录下生效。
+</details>
+
+<details>
 <summary><b>Claude Desktop</b></summary>
 
-写进 `claude_desktop_config.json`：
+写进 `claude_desktop_config.json`。**`npx` 要写绝对路径**——跑一下 `which npx`
+把结果贴进去：桌面应用由系统启动，`PATH` 是极简的，终端里能用的短名在这里常常
+找不到，而唯一的症状就是工具一直不出现。
 
 ```json
 {
@@ -186,8 +219,21 @@ cd humanpen-mcp && npm install && npm run build
 返回 `job_id` 并提示调用 `check_job`。无论如何服务端都在继续跑，工具提前返回不会
 丢任何东西。
 
-**`ai_percent` 可能是 `null`，而 `null` 不等于 0。** 当提交文本太短、无法评估时，
-报告打印的是 `*` 而不是数字。把它当成「AI 率 0%」是在替别人下没下过的结论。
+**`ai_percent` 可能是 `null`，而这通常是好消息。** 当 AI 率**低于 20%** 时，
+Turnitin 打印的是 `*` 而不是数字——这一档它拒绝给出具体数值，因为其中误判太多。
+所以 `null` 的意思是「低于 20%，Turnitin 不肯多说」，既不是 0，也不是「没结果」。
+
+## 常见问题
+
+**能把 Turnitin 的 AI 率降下来吗？**
+`balanced` 版一般一次就能降到 20% 以下——这正是 Turnitin 改打 `*`、不再给数字的
+门槛。没到位就把结果连同新报告再传一次，只重写仍被标出的片段。
+
+**iThenticate 的报告也支持吗？**
+支持，两种都能传，格式从文件自动识别。
+
+**我的文档会进模型上下文吗？**
+不会。上传文件，返回一个路径。40 页的论文不消耗任何 token。
 
 ## 开发
 
@@ -206,7 +252,7 @@ key 且会消耗积分，所以定位是**发版前的检查**，不是 CI 步�
 - [API 文档](https://api.humanpen.net/v1/docs.md) ·
   [OpenAPI schema](https://api.humanpen.net/v1/openapi.json)
 - [humanpen-skill](https://github.com/humanpen/humanpen-skill)——同样的能力做成
-  Claude Code 技能，不想跑 server 就用它
+  Agent Skill，不想跑 server 就用它
 - [humanpen.net](https://humanpen.net)
 
 Apache-2.0

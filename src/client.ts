@@ -63,7 +63,7 @@ export type DetectionReport = {
 };
 
 const DEFAULT_BASE_URL = 'https://api.humanpen.net/v1';
-const KEYS_URL = 'https://humanpen.net/settings';
+const KEYS_URL = 'https://humanpen.net/settings/api-keys';
 const PRICING_URL = 'https://humanpen.net/pricing';
 
 // Jobs take minutes. Start gentle and back off, which is what the API's own

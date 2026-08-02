@@ -1,10 +1,11 @@
 # humanpen-mcp
 
-**Give your AI agent the ability to work on real documents.** An MCP server that
-lets Claude, Codex, Cursor and any other MCP client take a `.docx`, `.pptx` or
-`.pdf` on disk and lower its AI-detection score, convert its citations to
-another style, condense it to a word budget, or translate it — with formatting,
-tables, images, citations and formulas intact.
+**Give your AI agent the ability to work on real documents.** An MCP server for
+[HumanPen](https://humanpen.net). Point Claude, Codex, Cursor or any other MCP
+client at a `.docx`, `.pptx` or `.pdf` on disk, and it can lower the file's
+AI-detection score, convert its citations to another style, condense it to a
+word budget, or translate it — formatting, tables, images, citations and
+formulas intact.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/Model_Context_Protocol-stdio-000000.svg)](https://modelcontextprotocol.io)
@@ -12,8 +13,10 @@ tables, images, citations and formulas intact.
 
 English · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
+[Website](https://humanpen.net) · [Pricing](https://humanpen.net/pricing) · [Developer docs](https://humanpen.net/developers)
+
 ```bash
-claude mcp add humanpen -e HUMANPEN_API_KEY=hp_your_key -- npx -y humanpen-mcp
+claude mcp add humanpen -s user -e HUMANPEN_API_KEY=hp_your_key -- npx -y humanpen-mcp
 ```
 
 > *"Here's my thesis and the Turnitin report — rewrite just the flagged parts,
@@ -44,10 +47,9 @@ loop for the model to lose track of.
 
 ## Get a key
 
-Create one at <https://humanpen.net/settings>. New accounts get 100 free
-credits — enough for a 1,000-word document. Pricing is 100 credits per 1,000
-words actually processed, 10 credits minimum per job. **Failed and cancelled
-jobs cost nothing.**
+Sign up at <https://humanpen.net> and create a key at
+<https://humanpen.net/settings/api-keys>. New accounts start with free credits,
+enough to put a document through and see what comes back.
 
 The key goes in an environment variable, never in a URL. URLs end up in server
 logs, proxy logs, shell history and screenshots.
@@ -58,15 +60,19 @@ logs, proxy logs, shell history and screenshots.
 <summary><b>Claude Code</b></summary>
 
 ```bash
-claude mcp add humanpen -e HUMANPEN_API_KEY=hp_your_key -- npx -y humanpen-mcp
+claude mcp add humanpen -s user -e HUMANPEN_API_KEY=hp_your_key -- npx -y humanpen-mcp
 ```
+
+`-s user` puts it in every project. The default scope is `local`, which
+loads the server only in the directory you ran the command from — and looks
+like a broken install the first time you open Claude Code somewhere else.
 
 If your version rejects `-e` ([reported
 upstream](https://github.com/anthropics/claude-code/issues/62332)), use the JSON
 form:
 
 ```bash
-claude mcp add-json humanpen '{"command":"npx","args":["-y","humanpen-mcp"],"env":{"HUMANPEN_API_KEY":"hp_your_key"}}'
+claude mcp add-json humanpen -s user '{"command":"npx","args":["-y","humanpen-mcp"],"env":{"HUMANPEN_API_KEY":"hp_your_key"}}'
 ```
 </details>
 
@@ -84,9 +90,41 @@ env = { HUMANPEN_API_KEY = "hp_your_key" }
 </details>
 
 <details>
+<summary><b>CodeBuddy / WorkBuddy</b></summary>
+
+```bash
+codebuddy mcp add --scope user humanpen -- npx -y humanpen-mcp
+```
+
+It also reads `${VAR}` in its config, so the key can stay in your environment
+instead of the file:
+
+```json
+{ "mcpServers": { "humanpen": {
+  "command": "npx", "args": ["-y", "humanpen-mcp"],
+  "env": { "HUMANPEN_API_KEY": "${HUMANPEN_API_KEY}" }
+} } }
+```
+
+`~/.codebuddy/.mcp.json` for every project, `<project>/.mcp.json` for one.
+</details>
+
+<details>
+<summary><b>Gemini CLI</b></summary>
+
+It has `gemini mcp add`, but the argument order differs between versions — run
+`gemini mcp add --help` and follow the usage line it prints. Pass the key with
+`-e HUMANPEN_API_KEY=...` and the scope with `-s user`; the default is
+`project`, which is only the directory you ran it in.
+</details>
+
+<details>
 <summary><b>Claude Desktop</b></summary>
 
-In `claude_desktop_config.json`:
+In `claude_desktop_config.json`. **Use the absolute path to `npx`** — run
+`which npx` and paste the result: a desktop app is launched by the OS with a
+minimal `PATH`, so the bare name that works in your terminal often is not found
+here, and the only symptom is that the tools never appear.
 
 ```json
 {
@@ -196,9 +234,23 @@ Any MCP client works: this is a plain stdio server started by
 `check_job`. The work continues on the server either way; nothing is lost by the
 tool returning early.
 
-**`ai_percent` can be `null`, and `null` is not zero.** A report prints `*`
-instead of a number when the submission is too short to assess. Reporting that
-as "0% AI" would be a claim nobody made.
+**`ai_percent` can be `null`, and that is usually good news.** Turnitin prints
+`*` instead of a number whenever AI writing comes in **under 20%** — it will not
+quantify that band, because too much of it is false positives. So `null` means
+"under 20%, and Turnitin will say no more", never "0%" and never "no result".
+
+## Questions people ask
+
+**Will this bring a Turnitin AI score down?**
+Usually under 20% in one pass with `balanced` — the threshold below which
+Turnitin prints `*` instead of a number. If it misses, hand the result back with
+the new report; only the passages still flagged get rewritten.
+
+**Does it work with iThenticate too?**
+Yes — pass either report. The format is read from the file.
+
+**Is my document sent to the model?**
+No. It uploads the file and answers with a path. A 40-page paper costs no tokens.
 
 ## Development
 
@@ -218,7 +270,7 @@ live key and spends credits, so it is a pre-release check rather than a CI step.
 - [API documentation](https://api.humanpen.net/v1/docs.md) ·
   [OpenAPI schema](https://api.humanpen.net/v1/openapi.json)
 - [humanpen-skill](https://github.com/humanpen/humanpen-skill) — the same
-  operations as a Claude Code skill, if you would rather not run a server
+  operations as an Agent Skill, if you would rather not run a server
 - [humanpen.net](https://humanpen.net)
 
 Apache-2.0
