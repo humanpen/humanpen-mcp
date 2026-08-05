@@ -154,9 +154,9 @@ server.registerTool(
     inputSchema: {
       document_path: z.string().describe('Absolute path to the .docx or .pptx to rewrite'),
       strategy: z
-        .enum(['conservative', 'balanced', 'aggressive', 'balanced_v2', 'aggressive_v2'])
+        .enum(['balanced', 'aggressive'])
         .optional()
-        .describe('Rewriting intensity; balanced is the usual first choice'),
+        .describe('Rewriting intensity; balanced is the usual first choice, aggressive rewrites more heavily'),
       report_path: z
         .string()
         .optional()
