@@ -165,24 +165,45 @@ server.registerTool(
       output_path: z.string().optional().describe('Where to write the result; defaults to beside the source'),
       wait_seconds: z.number().optional().describe(`How long to wait before returning a job id (default ${DEFAULT_WAIT_SECONDS})`),
       min_words: z.number().int().positive().optional()
-        .describe('Whole-document lower word bound (optional; omit for no limit). Cannot combine with report_path.'),
+        .describe('Whole-document lower word bound (optional; omit for no limit). Experimental - a word ' +
+          'limit noticeably weakens AI-rate reduction, so omit unless the user requires a length. ' +
+          'Cannot combine with report_path or segments.'),
       max_words: z.number().int().positive().optional()
-        .describe('Whole-document upper word bound (optional; omit for no limit).'),
+        .describe('Whole-document upper word bound (optional; omit for no limit). Same experimental caveat ' +
+          'and exclusivity as min_words.'),
+      segments: z
+        .array(z.object({
+          text: z.string().min(1).describe('The exact flagged passage text to bound'),
+          min_words: z.number().int().positive().optional(),
+          max_words: z.number().int().positive().optional(),
+        }))
+        .min(1)
+        .optional()
+        .describe('Per-passage word control (optional): each item is a flagged passage plus its own ' +
+          'min_words/max_words. Get the passage texts from read_detection_report and pass report_path ' +
+          'alongside so the report defines scope. Experimental, same caveat as min_words. Cannot combine ' +
+          'with the whole-document min_words/max_words.'),
     },
   },
-  async ({ document_path, strategy, report_path, instructions, output_path, wait_seconds, min_words, max_words }) => {
-    // A whole-document word band and a report scope the job to opposite things -
-    // the band to the whole document, the report to only its flagged passages -
-    // so the two cannot both hold. The API derives the report's passages later
-    // and so would take the job (and its charge) before mismatching; say no here.
-    if (report_path !== undefined && (min_words !== undefined || max_words !== undefined)) {
-      return failure(
-        new HumanPenError(
-          "min_words/max_words target the whole document and can't combine with report_path, " +
-            'which rewrites only the flagged passages. Use one or the other.',
-          'INVALID_WORD_BUDGET',
-        ),
-      );
+  async ({ document_path, strategy, report_path, instructions, output_path, wait_seconds, min_words, max_words, segments }) => {
+    // The whole-document band and the per-passage paths scope the job to different
+    // things - the band to the whole document, a report or segments to specific
+    // passages - and the API forbids the mix. It derives a report's passages later,
+    // so it would take the job (and its charge) before mismatching; refuse here.
+    // Per-passage limits ride on segments, which DO combine with a report (the
+    // report's flagged passages are exactly their scope).
+    const wholeBand = min_words !== undefined || max_words !== undefined;
+    if (wholeBand && report_path !== undefined) {
+      return failure(new HumanPenError(
+        "min_words/max_words target the whole document and can't combine with report_path, which " +
+          'rewrites only the flagged passages. For per-passage limits use segments instead.',
+        'INVALID_WORD_BUDGET'));
+    }
+    if (wholeBand && segments !== undefined) {
+      return failure(new HumanPenError(
+        "min_words/max_words target the whole document and can't combine with segments, which carry " +
+          'their own per-passage limits. Use one or the other.',
+        'INVALID_WORD_BUDGET'));
     }
     return runOperation(
       'humanize',
@@ -192,6 +213,12 @@ server.registerTool(
         additional_instructions: instructions,
         word_min: min_words !== undefined ? String(min_words) : undefined,
         word_max: max_words !== undefined ? String(max_words) : undefined,
+        // The API reads segments as a JSON array of {text, word_min?, word_max?};
+        // map the tool's min_words/max_words onto those names. JSON.stringify drops
+        // the undefined bounds, so an unset bound is simply absent.
+        segments: segments !== undefined
+          ? JSON.stringify(segments.map((s) => ({ text: s.text, word_min: s.min_words, word_max: s.max_words })))
+          : undefined,
       },
       { outputPath: output_path, waitSeconds: wait_seconds, reportPath: report_path },
     );

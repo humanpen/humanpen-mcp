@@ -216,7 +216,7 @@ MCP クライアントであれば何でも動きます。これは `npx -y huma
 
 | ツール | 内容 | 課金 |
 | --- | --- | --- |
-| `humanize_document` | `.docx`/`.pptx` を人が書いたように書き直し、AI 検出スコアを下げます。仕上がりの文字数範囲を指定するか、検出レポートを渡して指摘箇所だけを書き直せます。 | あり |
+| `humanize_document` | `.docx`/`.pptx` を人が書いたように書き直し、AI 検出スコアを下げます。検出レポートを渡して指摘箇所だけを書き直せます。仕上がりの文字数は全体の範囲、または段落ごとの範囲で指定できます（試験的機能——文字数を制限すると AI 率低減の効果が弱まります）。 | あり |
 | `fix_citations` | 文中引用と参考文献一覧を APA 7、MLA 9、Harvard、Chicago、IEEE、Vancouver、GB/T 7714、AMA、ACS、OSCOLA に変換します。本文は変更しません。 | あり |
 | `condense_document` | `.docx` を目標字数まで短縮します。構成と引用は保持されます。 | あり |
 | `translate_document` | `.docx`/`.pdf`/`.pptx`/`.xlsx`/`.epub`/`.html`/`.txt` を 12 言語間で翻訳し、レイアウトを保ちます。 | あり |
