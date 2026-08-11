@@ -164,15 +164,38 @@ server.registerTool(
       instructions: z.string().optional().describe('Extra requirements for this job'),
       output_path: z.string().optional().describe('Where to write the result; defaults to beside the source'),
       wait_seconds: z.number().optional().describe(`How long to wait before returning a job id (default ${DEFAULT_WAIT_SECONDS})`),
+      min_words: z.number().int().positive().optional()
+        .describe('Whole-document lower word bound (optional; omit for no limit). Cannot combine with report_path.'),
+      max_words: z.number().int().positive().optional()
+        .describe('Whole-document upper word bound (optional; omit for no limit).'),
     },
   },
-  async ({ document_path, strategy, report_path, instructions, output_path, wait_seconds }) =>
-    runOperation(
+  async ({ document_path, strategy, report_path, instructions, output_path, wait_seconds, min_words, max_words }) => {
+    // A whole-document word band and a report scope the job to opposite things -
+    // the band to the whole document, the report to only its flagged passages -
+    // so the two cannot both hold. The API derives the report's passages later
+    // and so would take the job (and its charge) before mismatching; say no here.
+    if (report_path !== undefined && (min_words !== undefined || max_words !== undefined)) {
+      return failure(
+        new HumanPenError(
+          "min_words/max_words target the whole document and can't combine with report_path, " +
+            'which rewrites only the flagged passages. Use one or the other.',
+          'INVALID_WORD_BUDGET',
+        ),
+      );
+    }
+    return runOperation(
       'humanize',
       document_path,
-      { strategy, additional_instructions: instructions },
+      {
+        strategy,
+        additional_instructions: instructions,
+        word_min: min_words !== undefined ? String(min_words) : undefined,
+        word_max: max_words !== undefined ? String(max_words) : undefined,
+      },
       { outputPath: output_path, waitSeconds: wait_seconds, reportPath: report_path },
-    ),
+    );
+  },
 );
 
 server.registerTool(
