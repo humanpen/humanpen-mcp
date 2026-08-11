@@ -1,6 +1,7 @@
 {
   "name": "humanpen-mcp",
-  "version": "1.4.0",
+  "version": "1.4.1",
+  "mcpName": "io.github.humanpen/humanpen-mcp",
   "description": "MCP server for HumanPen - lower AI-detection scores, fix citations, condense and translate document files, keeping formatting intact.",
   "type": "module",
   "bin": {
