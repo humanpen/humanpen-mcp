@@ -1,0 +1,13 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "humanpen": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "humanpen-mcp"],
+      "env": {
+        "HUMANPEN_API_KEY": "hp_your_key"
+      }
+    }
+  }
+}

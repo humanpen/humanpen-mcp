@@ -1,0 +1,28 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "humanpen",
+  "description": "Lower the AI-detection score on a Word/PowerPoint/PDF document so it reads as human-written — every fact, number, table and all formatting kept intact.",
+  "author": {
+    "name": "HumanPen",
+    "email": "support@humanpen.net",
+    "url": "https://humanpen.net"
+  },
+  "homepage": "https://humanpen.net",
+  "repository": "https://github.com/humanpen/humanpen-mcp",
+  "license": "Apache-2.0",
+  "keywords": [
+    "mcp",
+    "humanize",
+    "ai-humanizer",
+    "humanizer",
+    "ai-detection",
+    "ai-writing-detection",
+    "turnitin",
+    "ithenticate",
+    "docx",
+    "pptx",
+    "pdf",
+    "academic-writing",
+    "humanpen"
+  ]
+}
