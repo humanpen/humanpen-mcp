@@ -172,6 +172,25 @@ export class HumanPenClient {
     return this.request<JobReceipt>('POST', `/jobs/${operation}`, form);
   }
 
+  /**
+   * Continue a finished humanize job for free. No source file is uploaded - the
+   * server clones the parent job's own result as the source - so only the fresh
+   * report and optional fields (segments, instructions) ride along, POSTed to
+   * the parent's free-rehumanize endpoint. Eligibility is entirely the server's.
+   */
+  async createFreeRehumanizeJob(
+    parentJobId: string,
+    reportPath: string,
+    fields: Record<string, string | undefined>,
+  ): Promise<JobReceipt> {
+    const form = new FormData();
+    form.append('turnitin_file', await this.filePart(reportPath));
+    for (const [name, value] of Object.entries(fields)) {
+      if (value !== undefined && value !== '') form.append(name, value);
+    }
+    return this.request<JobReceipt>('POST', `/jobs/${parentJobId}/free-rehumanize`, form);
+  }
+
   async getJob(jobId: string): Promise<Job> {
     return this.request<Job>('GET', `/jobs/${jobId}`);
   }

@@ -220,6 +220,7 @@ Any MCP client works: this is a plain stdio server started by
 | Tool | What it does | Credits |
 | --- | --- | --- |
 | `humanize_document` | Rewrite a `.docx`/`.pptx` to read as human-written and score lower on AI detectors. Optionally take a detection report to rewrite only its flagged passages. Length can be held to a whole-document word range, or to per-passage ranges (experimental — limiting words weakens AI-rate reduction). | yes |
+| `free_rehumanize` | Continue a finished `humanize_document` job for **free**: upload a fresh detection report for its result and only the still-flagged passages are rewritten. Once per job, with a daily cap; the report must match that result. | free |
 | `fix_citations` | Convert in-text citations and the reference list to APA 7, MLA 9, Harvard, Chicago, IEEE, Vancouver, GB/T 7714, AMA, ACS or OSCOLA. Body text untouched. | yes |
 | `condense_document` | Shorten a `.docx` to a target word count, keeping structure and citations. | yes |
 | `translate_document` | Translate `.docx`/`.pdf`/`.pptx`/`.xlsx`/`.epub`/`.html`/`.txt` between 12 languages, keeping layout. | yes |

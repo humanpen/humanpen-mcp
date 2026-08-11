@@ -206,6 +206,7 @@ cd humanpen-mcp && npm install && npm run build
 | 工具 | 作用 | 计费 |
 | --- | --- | --- |
 | `humanize_document` | 重写 `.docx`/`.pptx`，让它读起来像人写的、在 AI 检测器上得分更低。可传入检测报告只改被标出的段落；可限定整篇字数区间，或逐段各设区间（试验功能——限定字数会削弱降 AI 效果）。 | 是 |
+| `free_rehumanize` | 对已完成的 `humanize_document` 任务**免费**继续降一次：用该结果的新检测报告，只改写仍被标红的片段。每个任务一次、每日有上限，报告须与该结果匹配。 | 免费 |
 | `fix_citations` | 把文内引用和参考文献列表转成 APA 7、MLA 9、Harvard、Chicago、IEEE、Vancouver、GB/T 7714、AMA、ACS 或 OSCOLA。正文不动。 | 是 |
 | `condense_document` | 把 `.docx` 缩写到目标字数，保留结构和引文。 | 是 |
 | `translate_document` | 在 12 种语言之间翻译 `.docx`/`.pdf`/`.pptx`/`.xlsx`/`.epub`/`.html`/`.txt`，保持排版。 | 是 |

@@ -3,7 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 
-import { HumanPenClient, HumanPenError, type Job } from './client.js';
+import { HumanPenClient, HumanPenError, type Job, type JobReceipt } from './client.js';
 
 export { HumanPenClient, HumanPenError } from './client.js';
 
@@ -98,6 +98,38 @@ function describeJob(job: Job, outputPath?: string) {
  * gets abandoned halfway. Only when the wait budget runs out does the caller
  * get an id, and then with an explicit instruction to use check_job.
  */
+async function awaitAndDownload(
+  receipt: JobReceipt,
+  downloadAnchor: string,
+  options: { outputPath?: string; waitSeconds?: number },
+) {
+  const waitMs =
+    Math.min(Math.max(options.waitSeconds ?? DEFAULT_WAIT_SECONDS, 0), MAX_WAIT_SECONDS) * 1000;
+  const job = await client.waitForJob(receipt.job_id, waitMs);
+  if (!job.finished) {
+    return text({
+      ...describeJob(job),
+      credits_frozen: receipt.credits_frozen,
+      note:
+        'Still running - this is normal, jobs take minutes. Call check_job with this job_id ' +
+        'to pick it up; the work continues either way.',
+    });
+  }
+  if (job.status !== 'DONE') {
+    return failure(
+      new HumanPenError(
+        `job ${job.status}: ${job.error?.message ?? 'no detail given'}`,
+        job.error?.code ?? '',
+      ),
+    );
+  }
+  // The result is named by the API; it lands next to the anchor file the caller
+  // has on disk (the source document, or - for a free re-humanize, which uploads
+  // no source - the report) unless an explicit output path is given.
+  const outputPath = await client.downloadResult(job, downloadAnchor, options.outputPath);
+  return text(describeJob(job, outputPath));
+}
+
 async function runOperation(
   operation: string,
   documentPath: string,
@@ -106,32 +138,54 @@ async function runOperation(
 ) {
   try {
     const receipt = await client.createJob(operation, documentPath, fields, options.reportPath);
-    const waitMs =
-      Math.min(Math.max(options.waitSeconds ?? DEFAULT_WAIT_SECONDS, 0), MAX_WAIT_SECONDS) * 1000;
-    const job = await client.waitForJob(receipt.job_id, waitMs);
-
-    if (!job.finished) {
-      return text({
-        ...describeJob(job),
-        credits_frozen: receipt.credits_frozen,
-        note:
-          'Still running - this is normal, jobs take minutes. Call check_job with this job_id ' +
-          'to pick it up; the work continues either way.',
-      });
-    }
-    if (job.status !== 'DONE') {
-      return failure(
-        new HumanPenError(
-          `job ${job.status}: ${job.error?.message ?? 'no detail given'}`,
-          job.error?.code ?? '',
-        ),
-      );
-    }
-    const outputPath = await client.downloadResult(job, documentPath, options.outputPath);
-    return text(describeJob(job, outputPath));
+    return await awaitAndDownload(receipt, documentPath, options);
   } catch (cause) {
     return failure(cause);
   }
+}
+
+/**
+ * Continue a finished humanize job for free: no source document is uploaded (the
+ * server clones the parent's result), just the fresh report and optional fields,
+ * POSTed to the parent's free-rehumanize endpoint. Every eligibility gate - one
+ * chance per job, the daily cap, the report matching that job's output - lives on
+ * the server; this only forwards the request and surfaces whatever it decides.
+ */
+async function runFreeRehumanize(
+  parentJobId: string,
+  reportPath: string,
+  fields: Record<string, string | undefined>,
+  options: { outputPath?: string; waitSeconds?: number },
+) {
+  try {
+    const receipt = await client.createFreeRehumanizeJob(parentJobId, reportPath, fields);
+    return await awaitAndDownload(receipt, reportPath, options);
+  } catch (cause) {
+    return failure(cause);
+  }
+}
+
+/** The shared per-passage word-control schema (humanize and free re-humanize). */
+const WORD_SEGMENTS = z
+  .array(
+    z.object({
+      text: z.string().min(1).describe('The exact flagged passage text to bound'),
+      min_words: z.number().int().positive().optional(),
+      max_words: z.number().int().positive().optional(),
+    }),
+  )
+  .min(1);
+
+/** Encode the tool's segments onto the API's segments JSON field, or undefined. */
+function encodeSegments(
+  segments: Array<{ text: string; min_words?: number; max_words?: number }> | undefined,
+): string | undefined {
+  // The API reads segments as a JSON array of {text, word_min?, word_max?}; map
+  // the tool's names onto those. JSON.stringify drops undefined bounds, so an
+  // unset bound is simply absent.
+  return segments !== undefined
+    ? JSON.stringify(segments.map((s) => ({ text: s.text, word_min: s.min_words, word_max: s.max_words })))
+    : undefined;
 }
 
 // Each operation is its own tool rather than one tool with an `operation`
@@ -171,14 +225,7 @@ server.registerTool(
       max_words: z.number().int().positive().optional()
         .describe('Whole-document upper word bound (optional; omit for no limit). Same experimental caveat ' +
           'and exclusivity as min_words.'),
-      segments: z
-        .array(z.object({
-          text: z.string().min(1).describe('The exact flagged passage text to bound'),
-          min_words: z.number().int().positive().optional(),
-          max_words: z.number().int().positive().optional(),
-        }))
-        .min(1)
-        .optional()
+      segments: WORD_SEGMENTS.optional()
         .describe('Per-passage word control (optional): each item is a flagged passage plus its own ' +
           'min_words/max_words. Get the passage texts from read_detection_report and pass report_path ' +
           'alongside so the report defines scope. Experimental, same caveat as min_words. Cannot combine ' +
@@ -213,16 +260,42 @@ server.registerTool(
         additional_instructions: instructions,
         word_min: min_words !== undefined ? String(min_words) : undefined,
         word_max: max_words !== undefined ? String(max_words) : undefined,
-        // The API reads segments as a JSON array of {text, word_min?, word_max?};
-        // map the tool's min_words/max_words onto those names. JSON.stringify drops
-        // the undefined bounds, so an unset bound is simply absent.
-        segments: segments !== undefined
-          ? JSON.stringify(segments.map((s) => ({ text: s.text, word_min: s.min_words, word_max: s.max_words })))
-          : undefined,
+        segments: encodeSegments(segments),
       },
       { outputPath: output_path, waitSeconds: wait_seconds, reportPath: report_path },
     );
   },
+);
+
+server.registerTool(
+  'free_rehumanize',
+  {
+    title: "Re-humanize a job's still-flagged passages for free",
+    description:
+      "Continue a finished humanize job for FREE. Upload a fresh detection report for that job's result; only " +
+      'the passages it still flags are rewritten, at no credit cost. The server enforces strict limits: one free ' +
+      "continuation per job, a per-day cap, the report must be of THAT job's own result (>=90% match) and show " +
+      '>=20% AI, and the result must still exist (kept ~7 days). If a limit is not met it returns a clear reason - ' +
+      'relay it and stop; do not retry or silently fall back to a paid job. Pass the job_id a prior ' +
+      'humanize_document (or check_job) returned.',
+    inputSchema: {
+      job_id: z.string().describe('The finished humanize job to continue (its job_id from humanize_document/check_job)'),
+      report_path: z.string().describe("Absolute path to the fresh Turnitin/iThenticate report for that job's result"),
+      segments: WORD_SEGMENTS.optional()
+        .describe('Per-passage word control for the still-flagged passages (optional), same shape and ' +
+          'experimental caveat as humanize_document.segments'),
+      instructions: z.string().optional().describe('Extra requirements for this job'),
+      output_path: z.string().optional().describe('Where to write the result; defaults to beside the report'),
+      wait_seconds: z.number().optional().describe(`How long to wait before returning a job id (default ${DEFAULT_WAIT_SECONDS})`),
+    },
+  },
+  async ({ job_id, report_path, segments, instructions, output_path, wait_seconds }) =>
+    runFreeRehumanize(
+      job_id,
+      report_path,
+      { additional_instructions: instructions, segments: encodeSegments(segments) },
+      { outputPath: output_path, waitSeconds: wait_seconds },
+    ),
 );
 
 server.registerTool(
