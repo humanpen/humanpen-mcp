@@ -64,7 +64,9 @@ const manifest = {
       env: { HUMANPEN_API_KEY: '${user_config.api_key}' },
     },
   },
-  tools_generated: true,
+  // `tools` is filled in below from the built server's own tools/list answer,
+  // so the static list can never drift from what the server actually serves.
+  tools_generated: false,
   user_config: {
     api_key: {
       type: 'string',
@@ -120,7 +122,14 @@ async function keylessSmoke(serverPath) {
   if (unannotated.length > 0) {
     throw new Error(`tools missing title/readOnlyHint annotations: ${unannotated.join(', ')}`);
   }
-  return tools.length;
+  return tools;
+}
+
+/** The first sentence of a tool description - directory cards, not the model,
+ * read the manifest, and they want the what, not the operating manual. */
+function firstSentence(description) {
+  const match = /^(.*?\.)(?:\s|$)/.exec(description ?? '');
+  return match ? match[1] : (description ?? '');
 }
 
 rmSync(OUT_DIR, { recursive: true, force: true });
@@ -137,6 +146,12 @@ await build({
   logLevel: 'warning',
 });
 
+// The smoke doubles as the source of truth: hosts that will not execute a
+// local bundle (directory pages, pre-install screens) read the manifest's
+// tools array, so it is taken verbatim from what the built server answers.
+const tools = await keylessSmoke(join(STAGE, 'server', 'index.js'));
+manifest.tools = tools.map((t) => ({ name: t.name, description: firstSentence(t.description) }));
+
 writeFileSync(join(STAGE, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
 // "type": "module" is what makes the bundled server/index.js load as ESM.
 writeFileSync(
@@ -146,10 +161,7 @@ writeFileSync(
 copyFileSync(join('brand', 'humanpen-mcp-logo.png'), join(STAGE, 'icon.png'));
 
 execFileSync(MCPB_BIN, ['validate', join(STAGE, 'manifest.json')], { stdio: 'inherit' });
-
-const toolCount = await keylessSmoke(join(STAGE, 'server', 'index.js'));
-
 execFileSync(MCPB_BIN, ['pack', STAGE, ARTIFACT], { stdio: 'inherit' });
 
 const kb = (statSync(ARTIFACT).size / 1024).toFixed(0);
-console.log(`\nhumanpen-mcp ${version}: ${ARTIFACT} (${kb} KB), keyless smoke listed ${toolCount} tools.`);
+console.log(`\nhumanpen-mcp ${version}: ${ARTIFACT} (${kb} KB), manifest lists ${manifest.tools.length} tools from the server's own answer.`);
