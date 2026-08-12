@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "humanpen",
-  "description": "Lower the AI-detection score on a Word/PowerPoint/PDF document so it reads as human-written — every fact, number, table and all formatting kept intact.",
+  "description": "A document-level AI humanizer that rewrites .docx/.pptx files in place so they read as human-written — the whole document, selected passages, or the text flagged by a Turnitin/iThenticate report — preserving formatting, tables, images, citations and formulas.",
   "author": {
     "name": "HumanPen",
     "email": "support@humanpen.net",
@@ -21,7 +21,6 @@
     "ithenticate",
     "docx",
     "pptx",
-    "pdf",
     "academic-writing",
     "humanpen"
   ]
