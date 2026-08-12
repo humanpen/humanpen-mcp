@@ -10,7 +10,7 @@ English · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
 > **Keywords:** ai humanizer, mcp server, model context protocol, turnitin ai detection, reduce ai score, humanize ai text, bypass ai detection, docx ai humanizer, ai content rewriter, ai writing tool, claude mcp, cursor mcp, ithenticate ai report
 
-**Humanize the red. Preserve the rest.** An MCP server for [HumanPen](https://humanpen.net) — a document-level AI humanizer that can humanize an entire document, rewrite user-selected passages, or automatically target flagged text from a Turnitin / iThenticate AI-detection report, editing `.docx` / `.pptx` files in place while preserving formatting, tables, images, citations, and formulas. Also converts citations between 12 styles, condenses to a word budget, and translates between 12 languages.
+**Humanize what's flagged. Preserve the rest.** An MCP server for [HumanPen](https://humanpen.net) — a document-level AI humanizer that can humanize an entire document, rewrite user-selected passages, or automatically target flagged text from a Turnitin / iThenticate AI-detection report, editing `.docx` / `.pptx` files in place while preserving formatting, tables, images, citations, and formulas. Also converts citations between 12 styles, condenses to a word budget, and translates between 12 languages.
 
 ```bash
 claude mcp add humanpen -s user -e HUMANPEN_API_KEY=hp_your_key -- npx -y humanpen-mcp
