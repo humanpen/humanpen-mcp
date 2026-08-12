@@ -17,19 +17,32 @@ const VERSION = __PACKAGE_VERSION__;
 const DEFAULT_WAIT_SECONDS = 55;
 const MAX_WAIT_SECONDS = 240;
 
-const apiKey = process.env.HUMANPEN_API_KEY?.trim();
-if (!apiKey) {
-  // stderr, not stdout: stdout is the JSON-RPC channel and anything else
-  // written there corrupts the protocol.
-  console.error(
-    'HUMANPEN_API_KEY is not set.\n' +
-      'Create a key at https://humanpen.net/settings/api-keys (new accounts get 100 free credits),\n' +
-      'then set it in your MCP client config, e.g. "env": { "HUMANPEN_API_KEY": "hp_..." }.',
-  );
-  process.exit(1);
+const MISSING_KEY_HELP =
+  'HUMANPEN_API_KEY is not set.\n' +
+  'Create a key at https://humanpen.net/settings/api-keys (new accounts get 100 free credits),\n' +
+  'then set it in your MCP client config, e.g. "env": { "HUMANPEN_API_KEY": "hp_..." }.';
+
+// The key is a credential for the remote API, not a precondition of this
+// process: a keyless server still answers initialize and tools/list (that is
+// how clients and directory scanners inspect it), so the missing-key error
+// surfaces on the first call that would actually use the credential - where
+// it can be acted on - instead of killing the server at startup.
+let client: HumanPenClient | undefined;
+function api(): HumanPenClient {
+  if (!client) {
+    const apiKey = process.env.HUMANPEN_API_KEY?.trim();
+    if (!apiKey) throw new HumanPenError(MISSING_KEY_HELP, 'MISSING_API_KEY');
+    client = new HumanPenClient(apiKey);
+  }
+  return client;
 }
 
-const client = new HumanPenClient(apiKey);
+if (!process.env.HUMANPEN_API_KEY?.trim()) {
+  // stderr, not stdout: stdout is the JSON-RPC channel and anything else
+  // written there corrupts the protocol.
+  console.error('humanpen-mcp: HUMANPEN_API_KEY is not set; tool calls will fail with setup instructions until it is.');
+}
+
 const server = new McpServer({ name: 'humanpen', version: VERSION });
 
 /** Render a value as the single text block MCP tools answer with. */
@@ -105,7 +118,7 @@ async function awaitAndDownload(
 ) {
   const waitMs =
     Math.min(Math.max(options.waitSeconds ?? DEFAULT_WAIT_SECONDS, 0), MAX_WAIT_SECONDS) * 1000;
-  const job = await client.waitForJob(receipt.job_id, waitMs);
+  const job = await api().waitForJob(receipt.job_id, waitMs);
   if (!job.finished) {
     return text({
       ...describeJob(job),
@@ -126,7 +139,7 @@ async function awaitAndDownload(
   // The result is named by the API; it lands next to the anchor file the caller
   // has on disk (the source document, or - for a free re-humanize, which uploads
   // no source - the report) unless an explicit output path is given.
-  const outputPath = await client.downloadResult(job, downloadAnchor, options.outputPath);
+  const outputPath = await api().downloadResult(job, downloadAnchor, options.outputPath);
   return text(describeJob(job, outputPath));
 }
 
@@ -137,7 +150,7 @@ async function runOperation(
   options: { outputPath?: string; waitSeconds?: number; reportPath?: string },
 ) {
   try {
-    const receipt = await client.createJob(operation, documentPath, fields, options.reportPath);
+    const receipt = await api().createJob(operation, documentPath, fields, options.reportPath);
     return await awaitAndDownload(receipt, documentPath, options);
   } catch (cause) {
     return failure(cause);
@@ -158,7 +171,7 @@ async function runFreeRehumanize(
   options: { outputPath?: string; waitSeconds?: number },
 ) {
   try {
-    const receipt = await client.createFreeRehumanizeJob(parentJobId, reportPath, fields);
+    const receipt = await api().createFreeRehumanizeJob(parentJobId, reportPath, fields);
     return await awaitAndDownload(receipt, reportPath, options);
   } catch (cause) {
     return failure(cause);
@@ -192,11 +205,17 @@ function encodeSegments(
 // argument: the name is what a model selects on, and the four take genuinely
 // different parameters. It mirrors the API, which has one endpoint each for
 // the same reason.
+//
+// Annotations, for clients that gate on them: none of these tools destroys
+// data - every writer only adds a new file beside an existing one - but only
+// the two lookups are read-only. destructiveHint defaults to true when a tool
+// is not read-only, so the explicit false is the half that carries information.
 
 server.registerTool(
   'humanize_document',
   {
     title: 'Humanize a document',
+    annotations: { readOnlyHint: false, destructiveHint: false },
     description:
       'Rewrite a .docx or .pptx so it reads as human-written and scores lower on AI detectors, ' +
       'keeping meaning, citations, tables and layout. Optionally pass a Turnitin/iThenticate AI ' +
@@ -271,6 +290,7 @@ server.registerTool(
   'free_rehumanize',
   {
     title: "Re-humanize a job's still-flagged passages for free",
+    annotations: { readOnlyHint: false, destructiveHint: false },
     description:
       "Continue a finished humanize job for FREE. Upload a fresh detection report for that job's result; only " +
       'the passages it still flags are rewritten, at no credit cost. The server enforces strict limits: one free ' +
@@ -302,6 +322,7 @@ server.registerTool(
   'fix_citations',
   {
     title: 'Convert citation format',
+    annotations: { readOnlyHint: false, destructiveHint: false },
     description:
       'Rewrite a .docx\'s in-text citations and reference list into one target style, leaving the ' +
       'body text alone. Saves the result next to the source and returns its path. COSTS CREDITS at ' +
@@ -329,6 +350,7 @@ server.registerTool(
   'condense_document',
   {
     title: 'Condense a document',
+    annotations: { readOnlyHint: false, destructiveHint: false },
     description:
       'Shorten a .docx to a target word count, keeping meaning, structure and citations. Saves the ' +
       'result next to the source and returns its path. COSTS CREDITS at 100 per 1,000 words processed (10 minimum) - say so and get agreement first.',
@@ -353,6 +375,7 @@ server.registerTool(
   'translate_document',
   {
     title: 'Translate a document',
+    annotations: { readOnlyHint: false, destructiveHint: false },
     description:
       'Translate a document into another language while keeping its layout, tables, images and ' +
       'formulas. Takes .docx, .pdf, .pptx, .xlsx, .epub, .html and .txt. Saves the result next to ' +
@@ -378,6 +401,7 @@ server.registerTool(
   'read_detection_report',
   {
     title: 'Read an AI-detection report',
+    annotations: { readOnlyHint: true },
     description:
       'Read a Turnitin or iThenticate AI Writing report PDF: returns the overall AI percentage and ' +
       'the flagged passages. Free - reads the file without starting a job. Pass the same report to ' +
@@ -396,7 +420,7 @@ server.registerTool(
   },
   async ({ report_path, type, include_segments }) => {
     try {
-      const report = await client.parseReport(report_path, type);
+      const report = await api().parseReport(report_path, type);
       return text({
         report_type: report.report_type,
         // Null means the report printed "*" rather than a number. Turnitin
@@ -420,6 +444,7 @@ server.registerTool(
   'check_job',
   {
     title: 'Check a job',
+    annotations: { readOnlyHint: false, destructiveHint: false },
     description:
       'Look up a job by id, and download its result if it has finished. Use this after a tool ' +
       'returned before the job was done.',
@@ -434,13 +459,13 @@ server.registerTool(
   },
   async ({ job_id, document_path, output_path }) => {
     try {
-      const job = await client.getJob(job_id);
+      const job = await api().getJob(job_id);
       let outputPath: string | undefined;
       // Only download when told where to put it. Falling back to a bare name
       // would drop the file in whatever directory the agent happens to be
       // running from, which is nobody's intent.
       if (job.status === 'DONE' && (document_path || output_path)) {
-        outputPath = await client.downloadResult(job, document_path ?? output_path!, output_path);
+        outputPath = await api().downloadResult(job, document_path ?? output_path!, output_path);
       }
       return text(describeJob(job, outputPath));
     } catch (cause) {
@@ -453,6 +478,7 @@ server.registerTool(
   'get_credit_balance',
   {
     title: 'Check the credit balance',
+    annotations: { readOnlyHint: true },
     description:
       'How many credits the account has. 1,000 words costs 100 credits, charged on the words ' +
       'actually processed, with a 10-credit minimum per job. Worth checking before a large document.',
@@ -460,7 +486,7 @@ server.registerTool(
   },
   async () => {
     try {
-      return text(await client.getBalance());
+      return text(await api().getBalance());
     } catch (cause) {
       return failure(cause);
     }
