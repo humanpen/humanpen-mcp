@@ -164,15 +164,18 @@ copyFileSync(join('brand', 'humanpen-mcp-logo.png'), join(STAGE, 'icon.png'));
 execFileSync(MCPB_BIN, ['validate', join(STAGE, 'manifest.json')], { stdio: 'inherit' });
 execFileSync(MCPB_BIN, ['pack', STAGE, ARTIFACT], { stdio: 'inherit' });
 
-// Smithery's registry wants each manifest tool to carry its full inputSchema,
-// which the MCPB schema in turn rejects as an unknown key - two consumers,
-// one file, incompatible dialects. So a second archive is zipped for Smithery
-// with the schemas the server answered, and the spec-pure .mcpb above stays
-// what Claude Desktop, `mcpb validate` and the GitHub release get.
+// Smithery's registry wants each manifest tool to carry its full inputSchema
+// and reads annotations from there too; the MCPB schema allows only name and
+// description (additionalProperties: false) and rejects both as unknown keys -
+// two consumers, one file, incompatible dialects. So a second archive is
+// zipped for Smithery with everything the server answered, and the spec-pure
+// .mcpb above stays what Claude Desktop, `mcpb validate` and the release get.
 manifest.tools = tools.map((t) => ({
   name: t.name,
-  description: firstSentence(t.description),
+  description: t.description,
   inputSchema: t.inputSchema,
+  ...(t.annotations ? { annotations: t.annotations } : {}),
+  ...(t.title ? { title: t.title } : {}),
 }));
 writeFileSync(join(STAGE, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
 rmSync(ARTIFACT_SMITHERY, { force: true });
