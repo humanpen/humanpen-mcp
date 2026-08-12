@@ -26,6 +26,7 @@ const { version } = JSON.parse(readFileSync(new URL('./package.json', import.met
 const OUT_DIR = 'dist-mcpb';
 const STAGE = join(OUT_DIR, 'bundle');
 const ARTIFACT = join(OUT_DIR, 'humanpen-mcp.mcpb');
+const ARTIFACT_SMITHERY = join(OUT_DIR, 'humanpen-mcp.smithery.mcpb');
 const MCPB_BIN = join('node_modules', '.bin', 'mcpb');
 
 // The public-facing copy leads with humanize alone (the flagship); the other
@@ -163,5 +164,22 @@ copyFileSync(join('brand', 'humanpen-mcp-logo.png'), join(STAGE, 'icon.png'));
 execFileSync(MCPB_BIN, ['validate', join(STAGE, 'manifest.json')], { stdio: 'inherit' });
 execFileSync(MCPB_BIN, ['pack', STAGE, ARTIFACT], { stdio: 'inherit' });
 
+// Smithery's registry wants each manifest tool to carry its full inputSchema,
+// which the MCPB schema in turn rejects as an unknown key - two consumers,
+// one file, incompatible dialects. So a second archive is zipped for Smithery
+// with the schemas the server answered, and the spec-pure .mcpb above stays
+// what Claude Desktop, `mcpb validate` and the GitHub release get.
+manifest.tools = tools.map((t) => ({
+  name: t.name,
+  description: firstSentence(t.description),
+  inputSchema: t.inputSchema,
+}));
+writeFileSync(join(STAGE, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+rmSync(ARTIFACT_SMITHERY, { force: true });
+execFileSync('zip', ['-q', '-r', '-X', join('..', 'humanpen-mcp.smithery.mcpb'), '.'], { cwd: STAGE });
+
 const kb = (statSync(ARTIFACT).size / 1024).toFixed(0);
-console.log(`\nhumanpen-mcp ${version}: ${ARTIFACT} (${kb} KB), manifest lists ${manifest.tools.length} tools from the server's own answer.`);
+console.log(
+  `\nhumanpen-mcp ${version}: ${ARTIFACT} (${kb} KB, spec-pure) + ${ARTIFACT_SMITHERY} (Smithery dialect), ` +
+    `${manifest.tools.length} tools from the server's own answer.`,
+);
