@@ -235,6 +235,15 @@ Yes — pass either report. The format is read from the file.
 **Is my document sent to the model?**
 No. It uploads the file and answers with a path. A 40-page paper costs no tokens.
 
+## Privacy Policy
+
+Documents you pass to a tool are uploaded over HTTPS to HumanPen's API
+(`api.humanpen.net`) for processing; results are written back to your disk, and
+processed files are kept server-side for about 7 days so `check_job` and the
+free re-humanize pass can find them. Document contents never enter the model's
+context. The full policy — what is collected, retention, and how to reach us —
+is at <https://humanpen.net/legal/privacy>.
+
 ## Development
 
 ```bash
