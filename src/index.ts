@@ -170,8 +170,8 @@ const WORD_SEGMENTS = z
   .array(
     z.object({
       text: z.string().min(1).describe('The exact flagged passage text to bound'),
-      min_words: z.number().int().positive().optional(),
-      max_words: z.number().int().positive().optional(),
+      min_words: z.number().int().positive().optional().describe('Lower word bound for this passage once rewritten'),
+      max_words: z.number().int().positive().optional().describe('Upper word bound for this passage once rewritten'),
     }),
   )
   .min(1);
@@ -219,12 +219,12 @@ server.registerTool(
       output_path: z.string().optional().describe('Where to write the result; defaults to beside the source'),
       wait_seconds: z.number().optional().describe(`How long to wait before returning a job id (default ${DEFAULT_WAIT_SECONDS})`),
       min_words: z.number().int().positive().optional()
-        .describe('Whole-document lower word bound (optional; omit for no limit). Experimental - a word ' +
-          'limit noticeably weakens AI-rate reduction, so omit unless the user requires a length. ' +
+        .describe('Lower word bound for the rewritten document (optional; omit for no limit). Experimental - ' +
+          'a word limit noticeably weakens AI-rate reduction, so omit unless the user requires a length. ' +
           'Cannot combine with report_path or segments.'),
       max_words: z.number().int().positive().optional()
-        .describe('Whole-document upper word bound (optional; omit for no limit). Same experimental caveat ' +
-          'and exclusivity as min_words.'),
+        .describe('Upper word bound for the rewritten document (optional; omit for no limit). Same ' +
+          'experimental caveat and exclusivity as min_words.'),
       segments: WORD_SEGMENTS.optional()
         .describe('Per-passage word control (optional): each item is a flagged passage plus its own ' +
           'min_words/max_words. Get the passage texts from read_detection_report and pass report_path ' +
