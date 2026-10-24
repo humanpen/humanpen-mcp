@@ -326,7 +326,7 @@ server.registerTool(
     description:
       'Rewrite a .docx\'s in-text citations and reference list into one target style, leaving the ' +
       'body text alone. Saves the result next to the source and returns its path. COSTS CREDITS at ' +
-      '100 per 1,000 words processed (10 minimum) - say so and get agreement first.',
+      '5 per 1,000 words processed (10 minimum) - say so and get agreement first.',
     inputSchema: {
       document_path: z.string().describe('Absolute path to the .docx'),
       style: z
@@ -353,7 +353,7 @@ server.registerTool(
     annotations: { readOnlyHint: false, destructiveHint: false },
     description:
       'Shorten a .docx to a target word count, keeping meaning, structure and citations. Saves the ' +
-      'result next to the source and returns its path. COSTS CREDITS at 100 per 1,000 words processed (10 minimum) - say so and get agreement first.',
+      'result next to the source and returns its path. COSTS CREDITS at 20 per 1,000 words processed (10 minimum) - say so and get agreement first.',
     inputSchema: {
       document_path: z.string().describe('Absolute path to the .docx'),
       max_words: z.number().int().positive().describe('Target word count for the whole document'),
@@ -379,7 +379,7 @@ server.registerTool(
     description:
       'Translate a document into another language while keeping its layout, tables, images and ' +
       'formulas. Takes .docx, .pdf, .pptx, .xlsx, .epub, .html and .txt. Saves the result next to ' +
-      'the source and returns its path. COSTS CREDITS at 100 per 1,000 words processed (10 minimum) - say so and get agreement first.',
+      'the source and returns its path. COSTS CREDITS at 10 per 1,000 words processed (10 minimum) - say so and get agreement first.',
     inputSchema: {
       document_path: z.string().describe('Absolute path to the document'),
       target_lang: z.string().describe('Target language: zh, en, zh-tw, ja, ko, es, fr, pt, ru, de, pl or it'),
@@ -480,8 +480,9 @@ server.registerTool(
     title: 'Check the credit balance',
     annotations: { readOnlyHint: true },
     description:
-      'How many credits the account has. 1,000 words costs 100 credits, charged on the words ' +
-      'actually processed, with a 10-credit minimum per job. Worth checking before a large document.',
+      'How many credits the account has. Per 1,000 words processed: humanize 100 credits, citation ' +
+      'fixes 5, condensing 20, translation 10, with a 10-credit minimum per job. Worth checking ' +
+      'before a large document.',
     inputSchema: {},
   },
   async () => {

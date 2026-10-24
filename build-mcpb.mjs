@@ -44,8 +44,9 @@ const manifest = {
     "HumanPen rewrites AI-sounding prose so it reads as human-written and scores lower on AI-detection " +
     "tools, without changing your facts, numbers, tables, or layout. Point it at a .docx or .pptx file " +
     "and it edits the file in place, then hands back the path - never the document's contents. Every " +
-    "job spends credits (1,000 words = 100 credits, charged only on the words processed, with a " +
-    "10-credit minimum; failed or cancelled jobs cost nothing); new accounts get 100 free credits at " +
+    "job spends credits (per 1,000 words processed: humanize 100, citation fixes 5, condensing 20, " +
+    "translation 10, with a 10-credit minimum; failed or cancelled jobs cost nothing); new accounts " +
+    "get 100 free credits at " +
     'https://humanpen.net.',
   author: { name: 'HumanPen', url: 'https://humanpen.net' },
   homepage: 'https://humanpen.net',
