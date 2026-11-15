@@ -94,15 +94,17 @@ console.log(`  tools: ${tools.join(', ')}`);
 const expected = [
   'humanize_document', 'fix_citations', 'condense_document',
   'translate_document', 'read_detection_report', 'check_job', 'get_credit_balance',
+  'start_project', 'get_project', 'wait_for_project', 'act_on_project', 'message_project', 'download_delivery',
 ];
-check('all seven tools registered', expected.every((name) => tools.includes(name)),
+check('all thirteen tools registered', expected.every((name) => tools.includes(name)),
   expected.filter((name) => !tools.includes(name)).join(',') || 'none missing');
 const described = (listed.result?.tools ?? []).every((tool) => tool.description?.length > 40);
 check('every tool carries a description a model can select on', described);
 const costed = (listed.result?.tools ?? [])
-  .filter((tool) => /humanize_document|fix_citations|condense_document|translate_document/.test(tool.name))
+  .filter((tool) => /humanize_document|fix_citations|condense_document|translate_document|start_project|act_on_project|message_project/
+    .test(tool.name))
   .every((tool) => /COSTS CREDITS/.test(tool.description ?? ''));
-check('the four spending tools say so in their description', costed);
+check('the spending tools say so in their description', costed);
 
 console.log('\n== 3. get_credit_balance');
 const balance = await call('tools/call', { name: 'get_credit_balance', arguments: {} });

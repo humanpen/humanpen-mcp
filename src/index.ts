@@ -3,7 +3,10 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 
-import { HumanPenClient, HumanPenError, type Job, type JobReceipt } from './client.js';
+import { mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
+
+import { HumanPenClient, HumanPenError, type Job, type JobReceipt, type Project } from './client.js';
 
 export { HumanPenClient, HumanPenError } from './client.js';
 
@@ -488,6 +491,266 @@ server.registerTool(
   async () => {
     try {
       return text(await api().getBalance());
+    } catch (cause) {
+      return failure(cause);
+    }
+  },
+);
+
+// ---------- research projects ----------
+//
+// A research project is a conversation with cloud agents rather than one job: they scope the request with the user,
+// quote a plan, work, are reviewed and deliver, and in between they wait on the user. So these tools follow the API's
+// own steps (start, look, act, wait, download) instead of hiding them in one call: what the agents ask and the plan
+// they quote are the user's to answer, through the model.
+
+/** The last thing the agents said, cut to what a model can relay. */
+const MESSAGE_CHARS = 1500;
+
+/** What the model needs about a project to tell the user and take the next step, and nothing more. */
+async function describeProject(project: Project) {
+  const wait = project.wait ?? null;
+  const plan = wait?.reason === 'plan' && project.spec
+    ? {
+      spec_version: project.spec_version,
+      goal: project.spec.goal ?? project.spec.title ?? null,
+      deliverables: Array.isArray(project.spec.deliverables)
+        ? (project.spec.deliverables as Array<Record<string, unknown>>).map((item) => item.path ?? item.description)
+        : undefined,
+      estimate_credits: project.estimate_credits ?? null,
+      estimate_minutes: project.estimate_minutes ?? null,
+    }
+    : undefined;
+  // The scoping questions live in the timeline, not in the project; read them only while they wait for answers.
+  let questions: unknown;
+  if (wait?.reason === 'answers' && project.stage === 'scoping') {
+    const [asked] = await api().latestProjectEvents(project.id, ['intake.questions'], 1);
+    questions = asked?.data.questions;
+  }
+  let lastMessage: string | undefined;
+  if (project.state !== 'working') {
+    const [said] = await api().latestProjectEvents(project.id, ['agent.message'], 1);
+    const words = typeof said?.data.text === 'string' ? said.data.text : undefined;
+    lastMessage = words && words.length > MESSAGE_CHARS ? `${words.slice(0, MESSAGE_CHARS)}...` : words;
+  }
+  const billing = project.billing ?? {};
+  return {
+    project_id: project.id,
+    title: project.title,
+    state: project.state,
+    stage: project.stage,
+    waiting_for: wait?.reason ?? null,
+    pause_id: wait?.pause_id,
+    allowed_actions: project.allowed_actions,
+    now: project.activity?.description ?? null,
+    progress: project.progress?.map((item) => `${item.status ?? 'todo'}: ${item.text ?? ''}`),
+    question: project.question ?? undefined,
+    questions,
+    plan,
+    last_message: lastMessage,
+    delivered_version: project.delivered_version ?? null,
+    consumed_credits: project.consumed_credits ?? billing.consumed_credits ?? null,
+    credit_cap: project.autonomy?.max_credits ?? null,
+    committed_credits: billing.committed_credits ?? null,
+  };
+}
+
+/** The step after a tool that started the agents working, said once so the model does not have to infer it. */
+const WAIT_NOTE = 'The agents work on it now. Call wait_for_project with this after_seq to hear when it needs the user ' +
+  'or is done; it can take minutes to hours.';
+
+const AUTONOMY = z
+  .object({
+    confirm_plan: z.enum(['ask', 'auto']).optional()
+      .describe('auto: confirm a plan whose estimate fits what is left of max_credits'),
+    answer: z.enum(['ask', 'recommended']).optional()
+      .describe("recommended: answer the agents' questions with their recommended answers"),
+    max_credits: z.number().int().positive()
+      .describe('The most the whole project may be charged, every round together; a figure the user agreed to'),
+  })
+  .describe('Let it run unattended within a credit cap the user set; omit to stop for the user at every step');
+
+server.registerTool(
+  'start_project',
+  {
+    title: 'Start a research project',
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    description:
+      "Hand a research, data analysis or writing task to HumanPen's cloud agents, with local files as its input: " +
+      'they scope it with the user, quote a plan in credits, do the work, have it reviewed and deliver files. ' +
+      'COSTS CREDITS once a plan is confirmed (charged by use): show the user the plan and its estimate and get ' +
+      'their agreement before act_on_project confirm_plan, unless they set autonomy with a max_credits. Needs an ' +
+      'API key with "Research projects" ticked.',
+    inputSchema: {
+      request: z.string().min(1).describe('What the user wants done, in their words: the goal, the deliverables, any constraints'),
+      files: z.array(z.string()).optional().describe('Absolute paths of input files (data, drafts, papers)'),
+      title: z.string().max(256).optional().describe('A name for the project; one is made from the request if omitted'),
+      lang: z.string().max(16).optional().describe('The language to write in, e.g. en or zh'),
+      autonomy: AUTONOMY.optional(),
+    },
+  },
+  async ({ request, files, title, lang, autonomy }) => {
+    try {
+      const local = await api().describeFiles(files ?? []);
+      const created = await api().createProject({
+        ...(title ? { title } : {}), ...(lang ? { lang } : {}), ...(autonomy ? { autonomy } : {}),
+        files: local.map(({ name, size }) => ({ name, size })),
+      });
+      const projectId = created.project.id;
+      const names = await api().uploadProjectFiles(projectId, created.uploads ?? [], local);
+      const sent = await api().sendProjectMessage(projectId, request, names);
+      return text({ project_id: projectId, after_seq: sent.seq, files: names, note: WAIT_NOTE });
+    } catch (cause) {
+      return failure(cause);
+    }
+  },
+);
+
+server.registerTool(
+  'get_project',
+  {
+    title: 'Look at a research project',
+    annotations: { readOnlyHint: true },
+    description:
+      'Where a research project stands: its state (working, input_required, completed, failed, cancelled, ' +
+      "rejected), what it waits on, the scoping questions or the plan and its estimate, the agents' last message, " +
+      'deliveries, credits used, and the actions allowed now. Free.',
+    inputSchema: {
+      project_id: z.string().describe('The project id start_project returned'),
+    },
+  },
+  async ({ project_id }) => {
+    try {
+      return text(await describeProject(await api().getProject(project_id)));
+    } catch (cause) {
+      return failure(cause);
+    }
+  },
+);
+
+server.registerTool(
+  'wait_for_project',
+  {
+    title: 'Wait for a research project',
+    annotations: { readOnlyHint: true },
+    description:
+      'Wait until a research project needs the user or has finished (its state leaves working), up to ' +
+      'wait_seconds, then say where it stands as get_project does. Free. If it is still working, call it again ' +
+      'with the after_seq it returns.',
+    inputSchema: {
+      project_id: z.string().describe('The project id'),
+      after_seq: z.number().int().nonnegative().optional()
+        .describe('The after_seq the last call returned (start_project, message_project, act_on_project or this)'),
+      wait_seconds: z.number().optional().describe(`How long to wait (default ${DEFAULT_WAIT_SECONDS}, at most ${MAX_WAIT_SECONDS})`),
+    },
+  },
+  async ({ project_id, after_seq, wait_seconds }) => {
+    try {
+      const waitMs = Math.min(Math.max(wait_seconds ?? DEFAULT_WAIT_SECONDS, 0), MAX_WAIT_SECONDS) * 1000;
+      const { project, next_after } = await api().waitForProject(project_id, after_seq, waitMs);
+      const picture = await describeProject(project);
+      return text(project.state === 'working'
+        ? { ...picture, after_seq: next_after ?? after_seq, note: 'Still working - call wait_for_project again.' }
+        : picture);
+    } catch (cause) {
+      return failure(cause);
+    }
+  },
+);
+
+server.registerTool(
+  'act_on_project',
+  {
+    title: 'Act on a research project',
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    description:
+      "Take one of the project's allowed_actions, with the ids it names: confirm_plan (spec_version; starts the " +
+      'paid work - only once the user agreed to the plan and its estimate), answer (answers: question id -> ' +
+      'answer), top_up (pause_id; max_credits raises a credit cap that ran out), one_more_round, accept_as_is, ' +
+      'pause, resume, cancel, feedback (version, value). COSTS CREDITS for confirm_plan, top_up, one_more_round ' +
+      'and the scoping answers.',
+    inputSchema: {
+      project_id: z.string().describe('The project id'),
+      action: z.enum(['confirm_plan', 'answer', 'top_up', 'one_more_round', 'accept_as_is', 'pause', 'resume',
+        'cancel', 'feedback', 'extend_retention']).describe('One of the allowed_actions get_project listed'),
+      spec_version: z.number().int().positive().optional().describe('confirm_plan: the plan version shown to the user'),
+      pause_id: z.string().optional().describe('top_up: the pause it continues'),
+      answers: z.record(z.string()).optional().describe('answer: question id -> answer'),
+      max_credits: z.number().int().positive().optional()
+        .describe('confirm_plan, top_up, one_more_round: a higher credit cap for the whole project, agreed by the user'),
+      version: z.number().int().positive().optional().describe('feedback: the delivered version'),
+      value: z.enum(['satisfied', 'needs_changes']).optional().describe('feedback: the verdict'),
+      text: z.string().optional().describe('feedback: what to change'),
+    },
+  },
+  async ({ project_id, ...body }) => {
+    try {
+      const fields = Object.fromEntries(Object.entries(body).filter(([, value]) => value !== undefined));
+      const answer = await api().actOnProject(project_id, fields);
+      const works = ['confirm_plan', 'answer', 'top_up', 'one_more_round', 'resume'].includes(body.action);
+      return text({ project_id, done: body.action, after_seq: answer.seq, ...(works ? { note: WAIT_NOTE } : {}) });
+    } catch (cause) {
+      return failure(cause);
+    }
+  },
+);
+
+server.registerTool(
+  'message_project',
+  {
+    title: 'Message a research project',
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    description:
+      "Write to a project's agents, with local files if any: answer in the user's own words, add context, or " +
+      'after a delivery ask for changes (a new round). COSTS CREDITS: the turns it starts are charged by use.',
+    inputSchema: {
+      project_id: z.string().describe('The project id'),
+      text: z.string().min(1).describe('The message, in the user\'s words'),
+      files: z.array(z.string()).optional().describe('Absolute paths of files to add with it'),
+    },
+  },
+  async ({ project_id, text: message, files }) => {
+    try {
+      let names: string[] = [];
+      if (files?.length) {
+        const local = await api().describeFiles(files);
+        const targets = await api().addProjectUploads(project_id, local.map(({ name, size }) => ({ name, size })));
+        names = await api().uploadProjectFiles(project_id, targets.uploads ?? [], local);
+      }
+      const sent = await api().sendProjectMessage(project_id, message, names);
+      return text({ project_id, after_seq: sent.seq, files: names, note: WAIT_NOTE });
+    } catch (cause) {
+      return failure(cause);
+    }
+  },
+);
+
+server.registerTool(
+  'download_delivery',
+  {
+    title: 'Download a research project delivery',
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    description:
+      'Save a delivered version of a research project (the latest unless version is given) as a zip in a ' +
+      'directory, and return its path. Free.',
+    inputSchema: {
+      project_id: z.string().describe('The project id'),
+      directory: z.string().describe('Absolute path of the directory to save the zip in'),
+      version: z.number().int().positive().optional().describe('The delivered version; the latest by default'),
+    },
+  },
+  async ({ project_id, directory, version }) => {
+    try {
+      const { deliveries } = await api().listProjectDeliveries(project_id);
+      const chosen = version ? deliveries.find((item) => item.version === version) : deliveries.at(-1);
+      if (!chosen) {
+        return failure(new HumanPenError(version ? `no delivered version ${version}` : 'nothing delivered yet',
+          'NO_DELIVERY'));
+      }
+      await mkdir(directory, { recursive: true });
+      const saved = await api().downloadProjectDelivery(project_id, chosen.version,
+        join(directory, `project-${project_id.slice(0, 8)}-v${chosen.version}.zip`));
+      return text({ project_id, version: chosen.version, files: chosen.files, path: saved.path, bytes: saved.bytes });
     } catch (cause) {
       return failure(cause);
     }

@@ -18,7 +18,7 @@ const BASE_URL = process.env.HUMANPEN_BASE_URL ?? 'https://api.humanpen.net/v1';
 const SOURCES = ['src/client.ts', 'src/index.ts'];
 
 // Paths as the client writes them, template literals included.
-const PATH_PATTERN = /['`](\/(?:jobs|files|credits|detect-reports|auth)[^'`\s]*)['`]/g;
+const PATH_PATTERN = /['`](\/(?:jobs|files|credits|detect-reports|auth|agent)[^'`\s?]*)[?'`]/g;
 
 /** Reduce an interpolated path to the template form OpenAPI uses. */
 function normalize(path) {
