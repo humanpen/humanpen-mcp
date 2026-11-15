@@ -105,6 +105,24 @@ const PRICING_URL = 'https://humanpen.net/pricing';
 const POLL_FIRST_MS = 3_000;
 const POLL_MAX_MS = 30_000;
 
+// A project that answers for its user (autonomy) shows a wait for a few seconds before HumanPen answers it: how long
+// wait_for_project keeps waiting through such a wait before it reports it.
+const AUTONOMY_GRACE_MS = 30_000;
+
+/**
+ * Whether HumanPen is about to answer a project's wait for its user (its autonomy covers it): a plan whose estimate
+ * fits what is left of the cap, or questions it answers with the recommended answers.
+ */
+export function autonomyWillAnswer(project: Project): boolean {
+  const autonomy = project.autonomy;
+  if (!autonomy || project.state !== 'input_required') return false;
+  if (project.wait?.reason === 'plan' && autonomy.confirm_plan === 'auto') {
+    const committed = Number((project.billing as { committed_credits?: number } | undefined)?.committed_credits ?? 0);
+    return typeof project.estimate_credits === 'number' && project.estimate_credits <= autonomy.max_credits - committed;
+  }
+  return project.wait?.reason === 'answers' && autonomy.answer === 'recommended';
+}
+
 // What the API accepts; checked here so the failure is a sentence rather than
 // a heap exhaustion partway through the read.
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
@@ -442,21 +460,39 @@ export class HumanPenClient {
   async waitForProject(projectId: string, after: number | undefined, waitMs: number):
     Promise<{ project: Project; next_after?: number }> {
     const deadline = Date.now() + waitMs;
+    // A wait HumanPen is about to answer for the user is waited through, a little past the deadline if need be.
+    let grace: number | undefined;
+    const settled = async (): Promise<Project | undefined> => {
+      const project = await this.getProject(projectId);
+      if (!autonomyWillAnswer(project)) return project;
+      grace ??= Date.now() + AUTONOMY_GRACE_MS;
+      return Date.now() >= grace ? project : undefined;
+    };
     if (after === undefined) {
       let delay = POLL_FIRST_MS;
       for (;;) {
         const status = await this.getProjectStatus(projectId);
-        if (status.state !== 'working' || Date.now() >= deadline) return { project: await this.getProject(projectId) };
-        await new Promise((resolve) => setTimeout(resolve, Math.min(delay, Math.max(0, deadline - Date.now()))));
+        if (status.state !== 'working') {
+          const project = await settled();
+          if (project) return { project };
+          delay = POLL_FIRST_MS;
+        } else if (Date.now() >= deadline) {
+          return { project: await this.getProject(projectId) };
+        }
+        await new Promise((resolve) => setTimeout(resolve, Math.min(delay, Math.max(1_000, deadline - Date.now()))));
         delay = Math.min(delay * 2, POLL_MAX_MS);
       }
     }
     let cursor = after;
-    while (Date.now() < deadline) {
-      const left = Math.floor((deadline - Date.now()) / 1000);
+    while (Date.now() < deadline || (grace !== undefined && Date.now() < grace)) {
+      const left = Math.floor((Math.max(deadline, grace ?? 0) - Date.now()) / 1000);
       const page = await this.projectEvents(projectId, { after: cursor, types: ['project.state'], wait: Math.max(1, left) });
       cursor = page.next_after;
-      if (page.events.some((event) => typeof event.data.state === 'string' && event.data.state !== 'working')) break;
+      const last = page.events.at(-1);
+      if (last && typeof last.data.state === 'string' && last.data.state !== 'working') {
+        const project = await settled();
+        if (project) return { project, next_after: cursor };
+      }
     }
     return { project: await this.getProject(projectId), next_after: cursor };
   }
