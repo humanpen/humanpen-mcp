@@ -76,14 +76,17 @@ export type Project = {
   title: string | null;
   state: string;
   stage: string | null;
-  wait: ({ reason: string } & Record<string, unknown>) | null;
+  /** While input_required: what the user does next (send_request, answer_questions, confirm_or_revise_plan,
+   * accept_or_retry, top_up, resume, rephrase) and what doing it takes. */
+  required_input: ({ type: string; pause_id?: string } & Record<string, unknown>) | null;
+  queue_position?: number | null;
+  retry_at?: string | null;
   allowed_actions: Array<{ action: string } & Record<string, unknown>>;
   activity?: { kind?: string; description?: string } | null;
   progress?: Array<{ text?: string; status?: string }> | null;
   question?: Record<string, unknown> | null;
   spec_version?: number | null;
   spec?: Record<string, unknown> | null;
-  estimate_credits?: number | null;
   estimate_minutes?: number[] | null;
   delivered_version?: number | null;
   autonomy?: { confirm_plan: string; answer: string; max_credits: number } | null;
@@ -109,18 +112,22 @@ const POLL_MAX_MS = 30_000;
 // wait_for_project keeps waiting through such a wait before it reports it.
 const AUTONOMY_GRACE_MS = 30_000;
 
+/** A state in which the project is not the user's to act on yet: queued for its turn, or the agents at work. */
+export function isBusy(state: string | undefined): boolean {
+  return state === 'queued' || state === 'working';
+}
+
 /**
- * Whether HumanPen is about to answer a project's wait for its user (its autonomy covers it): a plan whose estimate
- * fits what is left of the cap, or questions it answers with the recommended answers.
+ * Whether HumanPen may be about to answer what a project needs from its user (its autonomy covers it): a plan to
+ * confirm (HumanPen confirms it when its own estimate fits what is left of the cap; the API does not show that
+ * estimate, so the grace below decides), or questions it answers with the recommended answers.
  */
 export function autonomyWillAnswer(project: Project): boolean {
   const autonomy = project.autonomy;
   if (!autonomy || project.state !== 'input_required') return false;
-  if (project.wait?.reason === 'plan' && autonomy.confirm_plan === 'auto') {
-    const committed = Number((project.billing as { committed_credits?: number } | undefined)?.committed_credits ?? 0);
-    return typeof project.estimate_credits === 'number' && project.estimate_credits <= autonomy.max_credits - committed;
-  }
-  return project.wait?.reason === 'answers' && autonomy.answer === 'recommended';
+  const needed = project.required_input?.type;
+  if (needed === 'confirm_or_revise_plan') return autonomy.confirm_plan === 'auto';
+  return needed === 'answer_questions' && autonomy.answer === 'recommended';
 }
 
 // What the API accepts; checked here so the failure is a sentence rather than
@@ -472,7 +479,7 @@ export class HumanPenClient {
       let delay = POLL_FIRST_MS;
       for (;;) {
         const status = await this.getProjectStatus(projectId);
-        if (status.state !== 'working') {
+        if (!isBusy(status.state)) {
           const project = await settled();
           if (project) return { project };
           delay = POLL_FIRST_MS;
@@ -489,7 +496,7 @@ export class HumanPenClient {
       const page = await this.projectEvents(projectId, { after: cursor, types: ['project.state'], wait: Math.max(1, left) });
       cursor = page.next_after;
       const last = page.events.at(-1);
-      if (last && typeof last.data.state === 'string' && last.data.state !== 'working') {
+      if (last && typeof last.data.state === 'string' && !isBusy(last.data.state)) {
         const project = await settled();
         if (project) return { project, next_after: cursor };
       }

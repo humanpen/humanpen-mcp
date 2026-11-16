@@ -202,8 +202,8 @@ cd humanpen-mcp && npm install && npm run build
 | `read_detection_report` | 读 Turnitin/iThenticate 的 AI Writing 报告：总体 AI 率与被标出的段落。 | 免费 |
 | `check_job` | 查任务并下载结果。 | 免费 |
 | `get_credit_balance` | 剩余积分。 | 免费 |
-| `start_project` | 把调研、数据分析或写作任务交给 HumanPen 的云端 Agent，本地文件作为输入：它们先和你确认需求、按积分报方案，再动手、经审核后交付文件。需要创建时勾选了「发起项目」的密钥。 | 确认方案后 |
-| `get_project` | 项目进行到哪一步：在等什么、需求确认的问题或方案与预估、Agent 最近的一条消息、交付情况。 | 免费 |
+| `start_project` | 把调研、数据分析或写作任务交给 HumanPen 的云端 Agent，本地文件作为输入：它们先和你确认需求、给出方案，再动手、经审核后交付文件。需要创建时勾选了「发起项目」的密钥。 | 确认方案后 |
+| `get_project` | 项目进行到哪一步：需要你做什么、需求确认的问题或方案、Agent 最近的一条消息、交付情况。 | 免费 |
 | `wait_for_project` | 等到项目需要你处理，或已经完成。 | 免费 |
 | `act_on_project` | 确认方案、回答问题、追加、按现状交付、暂停、继续、取消、反馈。 | 确认方案、追加时 |
 | `message_project` | 给 Agent 发消息并附文件：补充背景，或交付后提出修改（开始新一轮）。 | 是 |
@@ -219,7 +219,7 @@ cd humanpen-mcp && npm install && npm run build
 Turnitin 打印的是 `*` 而不是数字——这一档它拒绝给出具体数值，因为其中误判太多。
 所以 `null` 的意思是「低于 20%，Turnitin 不肯多说」，既不是 0，也不是「没结果」。
 
-**项目花积分之前会先问你。** 方案和预估会先交回给你，用 `act_on_project` 确认；除非你发起时设了 `autonomy` 和一个
+**项目花积分之前会先问你。** 方案会先交回给你，用 `act_on_project` 确认（之后按实际用量扣积分，不预先报价）；除非你发起时设了 `autonomy` 和一个
 愿意花的 `max_credits`——这时它会自动确认放得下的方案、按推荐答案回答问题、自己接着做，整个项目合计不超过这个上限。
 一个项目要跑几分钟到几小时；`wait_for_project` 每次最多等约 55 秒，没完就再调一次，直到项目需要你或已完成。
 

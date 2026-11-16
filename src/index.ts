@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { HumanPenClient, HumanPenError, type Job, type JobReceipt, type Project } from './client.js';
+import { HumanPenClient, HumanPenError, isBusy, type Job, type JobReceipt, type Project } from './client.js';
 
 export { HumanPenClient, HumanPenError } from './client.js';
 
@@ -500,35 +500,34 @@ server.registerTool(
 // ---------- research projects ----------
 //
 // A research project is a conversation with cloud agents rather than one job: they scope the request with the user,
-// quote a plan, work, are reviewed and deliver, and in between they wait on the user. So these tools follow the API's
-// own steps (start, look, act, wait, download) instead of hiding them in one call: what the agents ask and the plan
-// they quote are the user's to answer, through the model.
+// propose a plan, work, are reviewed and deliver, and in between they wait on the user. So these tools follow the
+// API's own steps (start, look, act, wait, download) instead of hiding them in one call: what the agents ask and the
+// plan they propose are the user's to answer, through the model.
 
 /** The last thing the agents said, cut to what a model can relay. */
 const MESSAGE_CHARS = 1500;
 
 /** What the model needs about a project to tell the user and take the next step, and nothing more. */
 async function describeProject(project: Project) {
-  const wait = project.wait ?? null;
-  const plan = wait?.reason === 'plan' && project.spec
+  const needed = project.required_input ?? null;
+  const plan = needed?.type === 'confirm_or_revise_plan' && project.spec
     ? {
       spec_version: project.spec_version,
       goal: project.spec.goal ?? project.spec.title ?? null,
       deliverables: Array.isArray(project.spec.deliverables)
         ? (project.spec.deliverables as Array<Record<string, unknown>>).map((item) => item.path ?? item.description)
         : undefined,
-      estimate_credits: project.estimate_credits ?? null,
       estimate_minutes: project.estimate_minutes ?? null,
     }
     : undefined;
   // The scoping questions live in the timeline, not in the project; read them only while they wait for answers.
   let questions: unknown;
-  if (wait?.reason === 'answers' && project.stage === 'scoping') {
+  if (needed?.type === 'answer_questions' && project.stage === 'scoping') {
     const [asked] = await api().latestProjectEvents(project.id, ['intake.questions'], 1);
     questions = asked?.data.questions;
   }
   let lastMessage: string | undefined;
-  if (project.state !== 'working') {
+  if (!isBusy(project.state)) {
     const [said] = await api().latestProjectEvents(project.id, ['agent.message'], 1);
     const words = typeof said?.data.text === 'string' ? said.data.text : undefined;
     lastMessage = words && words.length > MESSAGE_CHARS ? `${words.slice(0, MESSAGE_CHARS)}...` : words;
@@ -539,8 +538,9 @@ async function describeProject(project: Project) {
     title: project.title,
     state: project.state,
     stage: project.stage,
-    waiting_for: wait?.reason ?? null,
-    pause_id: wait?.pause_id,
+    needs_from_user: needed?.type ?? null,
+    pause_id: needed?.pause_id,
+    queue_position: project.queue_position ?? undefined,
     allowed_actions: project.allowed_actions,
     now: project.activity?.description ?? null,
     progress: project.progress?.map((item) => `${item.status ?? 'todo'}: ${item.text ?? ''}`),
@@ -562,7 +562,7 @@ const WAIT_NOTE = 'The agents work on it now. Call wait_for_project with this af
 const AUTONOMY = z
   .object({
     confirm_plan: z.enum(['ask', 'auto']).optional()
-      .describe('auto: confirm a plan whose estimate fits what is left of max_credits'),
+      .describe("auto: confirm a plan when HumanPen's estimate of it fits what is left of max_credits"),
     answer: z.enum(['ask', 'recommended']).optional()
       .describe("recommended: answer the agents' questions with their recommended answers"),
     max_credits: z.number().int().positive()
@@ -577,9 +577,9 @@ server.registerTool(
     annotations: { readOnlyHint: false, destructiveHint: false },
     description:
       "Hand a research, data analysis or writing task to HumanPen's cloud agents, with local files as its input: " +
-      'they scope it with the user, quote a plan in credits, do the work, have it reviewed and deliver files. ' +
-      'COSTS CREDITS once a plan is confirmed (charged by use): show the user the plan and its estimate and get ' +
-      'their agreement before act_on_project confirm_plan, unless they set autonomy with a max_credits. Needs an ' +
+      'they scope it with the user, propose a plan, do the work, have it reviewed and deliver files. ' +
+      'COSTS CREDITS once a plan is confirmed (charged by use; there is no price up front): show the user the plan ' +
+      'and get their agreement before act_on_project confirm_plan, unless they set autonomy with a max_credits. Needs an ' +
       'API key with "Research projects" ticked.',
     inputSchema: {
       request: z.string().min(1).describe('What the user wants done, in their words: the goal, the deliverables, any constraints'),
@@ -612,8 +612,8 @@ server.registerTool(
     title: 'Look at a research project',
     annotations: { readOnlyHint: true },
     description:
-      'Where a research project stands: its state (working, input_required, completed, failed, cancelled, ' +
-      "rejected), what it waits on, the scoping questions or the plan and its estimate, the agents' last message, " +
+      'Where a research project stands: its state (queued, working, input_required, completed, failed, cancelled, ' +
+      "rejected), what it needs from the user, the scoping questions or the plan, the agents' last message, " +
       'deliveries, credits used, and the actions allowed now. Free.',
     inputSchema: {
       project_id: z.string().describe('The project id start_project returned'),
@@ -634,7 +634,7 @@ server.registerTool(
     title: 'Wait for a research project',
     annotations: { readOnlyHint: true },
     description:
-      'Wait until a research project needs the user or has finished (its state leaves working), up to ' +
+      'Wait until a research project needs the user or has finished (its state is no longer queued or working), up to ' +
       'wait_seconds, then say where it stands as get_project does. Free. If it is still working, call it again ' +
       'with the after_seq it returns.',
     inputSchema: {
@@ -649,7 +649,7 @@ server.registerTool(
       const waitMs = Math.min(Math.max(wait_seconds ?? DEFAULT_WAIT_SECONDS, 0), MAX_WAIT_SECONDS) * 1000;
       const { project, next_after } = await api().waitForProject(project_id, after_seq, waitMs);
       const picture = await describeProject(project);
-      return text(project.state === 'working'
+      return text(isBusy(project.state)
         ? { ...picture, after_seq: next_after ?? after_seq, note: 'Still working - call wait_for_project again.' }
         : picture);
     } catch (cause) {
@@ -665,7 +665,7 @@ server.registerTool(
     annotations: { readOnlyHint: false, destructiveHint: false },
     description:
       "Take one of the project's allowed_actions, with the ids it names: confirm_plan (spec_version; starts the " +
-      'paid work - only once the user agreed to the plan and its estimate), answer (answers: question id -> ' +
+      'paid work - only once the user agreed to the plan; it is charged by what it uses), answer (answers: question id -> ' +
       'answer), top_up (pause_id; max_credits raises a credit cap that ran out), one_more_round, accept_as_is, ' +
       'pause, resume, cancel, feedback (version, value). COSTS CREDITS for confirm_plan, top_up, one_more_round ' +
       'and the scoping answers.',

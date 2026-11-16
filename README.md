@@ -209,8 +209,8 @@ Any MCP client works: this is a plain stdio server started by
 | `read_detection_report` | Read a Turnitin or iThenticate AI Writing report: overall AI percentage and the flagged passages. | free |
 | `check_job` | Look up a job and download its result. | free |
 | `get_credit_balance` | Credits remaining. | free |
-| `start_project` | Hand a research, data analysis or writing task to HumanPen's cloud agents, with local files as its input: they scope it with you, quote a plan in credits, do the work, have it reviewed and deliver files. Needs a key created with **Research projects** ticked. | once a plan is confirmed |
-| `get_project` | Where a project stands: what it waits on, the scoping questions or the plan and its estimate, the agents' last message, the deliveries. | free |
+| `start_project` | Hand a research, data analysis or writing task to HumanPen's cloud agents, with local files as its input: they scope it with you, propose a plan, do the work, have it reviewed and deliver files. Needs a key created with **Research projects** ticked. | once a plan is confirmed |
+| `get_project` | Where a project stands: what it needs from you, the scoping questions or the plan, the agents' last message, the deliveries. | free |
 | `wait_for_project` | Wait until a project needs you or has finished. | free |
 | `act_on_project` | Confirm the plan, answer questions, top up, take the work as it is, pause, resume, cancel, give feedback. | confirming, topping up |
 | `message_project` | Write to the agents, with files: more context, or changes after a delivery (a new round). | yes |
@@ -228,8 +228,8 @@ tool returning early.
 quantify that band, because too much of it is false positives. So `null` means
 "under 20%, and Turnitin will say no more", never "0%" and never "no result".
 
-**A research project asks before it spends.** Its plan and estimate come back to you to confirm with
-`act_on_project`, unless you start it with `autonomy` and a `max_credits` you are willing to spend: then it confirms
+**A research project asks before it spends.** Its plan comes back to you to confirm with
+`act_on_project` (it is then charged by what it uses; there is no price up front), unless you start it with `autonomy` and a `max_credits` you are willing to spend: then it confirms
 plans that fit, answers with the recommended answers and goes on by itself, never past that cap for the whole
 project. A project runs for minutes to hours; `wait_for_project` waits about 55 seconds at a time, so call it again
 until the project needs you or is done.
