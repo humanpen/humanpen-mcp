@@ -85,6 +85,8 @@ export type Project = {
   queue_position?: number | null;
   retry_at?: string | null;
   allowed_actions: Array<{ action: string } & Record<string, unknown>>;
+  /** The user's messages the agents have not read yet (their seq): they read them after the step they are on. */
+  pending_messages?: number[];
   activity?: { kind?: string; description?: string } | null;
   progress?: Array<{ text?: string; status?: string }> | null;
   question?: Record<string, unknown> | null;
@@ -443,9 +445,11 @@ export class HumanPenClient {
     return response.headers.get('etag') ?? '';
   }
 
-  async sendProjectMessage(projectId: string, text: string, attachments: string[] = []): Promise<{ seq: number | null }> {
+  async sendProjectMessage(projectId: string, text: string, attachments: string[] = [],
+    deliverNow = false): Promise<{ seq: number | null }> {
     return this.json('POST', `/agent/projects/${projectId}/messages`,
-      attachments.length ? { text, attachments } : { text }, randomUUID());
+      { text, ...(attachments.length ? { attachments } : {}), ...(deliverNow ? { deliver_now: true } : {}) },
+      randomUUID());
   }
 
   async getProject(projectId: string): Promise<Project> {

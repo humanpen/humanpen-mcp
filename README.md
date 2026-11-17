@@ -216,7 +216,7 @@ Any MCP client works: this is a plain stdio server started by
 | `get_project` | Where a project stands: what it needs from you, the scoping questions or the plan, the agents' last message, the deliveries. | free |
 | `wait_for_project` | Wait until a project needs you or has finished. | free |
 | `act_on_project` | Confirm the plan, answer questions, top up, take the work as it is, pause, resume, cancel, give feedback. | confirming, topping up |
-| `message_project` | Write to the agents, with files: more context, or changes after a delivery (a new round). | yes |
+| `message_project` | Write to the agents, with files: more context, or changes after a delivery (a new round). While they work they read it after the step they are on; `deliver_now` hands it over at once. | yes |
 | `download_delivery` | Save a delivered version as a zip. | free |
 
 ## Three things worth knowing

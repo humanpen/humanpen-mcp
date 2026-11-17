@@ -680,6 +680,8 @@ async function describeProject(project: Project) {
     pause_id: needed?.pause_id,
     queue_position: project.queue_position ?? undefined,
     allowed_actions: project.allowed_actions,
+    // Messages the agents have not read yet: they read them after the step they are on (deliver_now: at once).
+    waiting_messages: project.pending_messages?.length ? project.pending_messages : undefined,
     now: project.activity?.description ?? null,
     progress: project.progress?.map((item) => `${item.status ?? 'todo'}: ${item.text ?? ''}`),
     question: project.question ?? undefined,
@@ -805,12 +807,13 @@ server.registerTool(
       "Take one of the project's allowed_actions, with the ids it names: confirm_plan (spec_version; starts the " +
       'paid work - only once the user agreed to the plan; it is charged by what it uses), answer (answers: question id -> ' +
       'answer), top_up (pause_id; max_credits raises a credit cap that ran out), one_more_round, accept_as_is, ' +
-      'pause, resume, cancel, feedback (version, value). COSTS CREDITS for confirm_plan, top_up, one_more_round ' +
-      'and the scoping answers.',
+      'pause, resume, cancel, feedback (version, value), deliver_now (the agents read the waiting messages at once, ' +
+      'interrupting the step they are on). COSTS CREDITS for confirm_plan, top_up, one_more_round and the scoping ' +
+      'answers.',
     inputSchema: {
       project_id: z.string().describe('The project id'),
       action: z.enum(['confirm_plan', 'answer', 'top_up', 'one_more_round', 'accept_as_is', 'pause', 'resume',
-        'cancel', 'feedback', 'extend_retention']).describe('One of the allowed_actions get_project listed'),
+        'cancel', 'feedback', 'extend_retention', 'deliver_now']).describe('One of the allowed_actions get_project listed'),
       spec_version: z.number().int().positive().optional().describe('confirm_plan: the plan version shown to the user'),
       pause_id: z.string().optional().describe('top_up: the pause it continues'),
       answers: z.record(z.string()).optional().describe('answer: question id -> answer'),
@@ -840,14 +843,18 @@ server.registerTool(
     annotations: { readOnlyHint: false, destructiveHint: false },
     description:
       "Write to a project's agents, with local files if any: answer in the user's own words, add context, or " +
-      'after a delivery ask for changes (a new round). COSTS CREDITS: the turns it starts are charged by use.',
+      'after a delivery ask for changes (a new round). While they work, they read it after the step they are on ' +
+      '(usually seconds); deliver_now hands it over at once, interrupting that step. COSTS CREDITS: the turns it ' +
+      'starts are charged by use.',
     inputSchema: {
       project_id: z.string().describe('The project id'),
       text: z.string().min(1).describe('The message, in the user\'s words'),
       files: z.array(z.string()).optional().describe('Absolute paths of files to add with it'),
+      deliver_now: z.boolean().optional()
+        .describe('Interrupt the step the agents are on so they read it at once (urgent corrections only)'),
     },
   },
-  async ({ project_id, text: message, files }) => {
+  async ({ project_id, text: message, files, deliver_now }) => {
     try {
       let names: string[] = [];
       if (files?.length) {
@@ -855,7 +862,7 @@ server.registerTool(
         const targets = await api().addProjectUploads(project_id, local.map(({ name, size }) => ({ name, size })));
         names = await api().uploadProjectFiles(project_id, targets.uploads ?? [], local);
       }
-      const sent = await api().sendProjectMessage(project_id, message, names);
+      const sent = await api().sendProjectMessage(project_id, message, names, deliver_now === true);
       return text({ project_id, after_seq: sent.seq, files: names, note: WAIT_NOTE });
     } catch (cause) {
       return failure(cause);
