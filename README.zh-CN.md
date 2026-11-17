@@ -194,13 +194,16 @@ cd humanpen-mcp && npm install && npm run build
 
 | 工具 | 作用 | 计费 |
 | --- | --- | --- |
-| `humanize_document` | 重写 `.docx`/`.pptx`，让它读起来像人写的、在 AI 检测器上得分更低。可传入检测报告只改被标出的段落；可限定整篇字数区间，或逐段各设区间（试验功能——限定字数会削弱降 AI 效果）。 | 是 |
+| `humanize_document` | 重写 `.docx`/`.pptx`，让它读起来像人写的、在 AI 检测器上得分更低。可传入检测报告或自己选的段落，只改这些；可限定整篇字数区间，或逐段各设区间（试验功能——限定字数会削弱降 AI 效果）。 | 是 |
 | `free_rehumanize` | 对已完成的 `humanize_document` 任务**免费**继续降一次：用该结果的新检测报告，只改写仍被标红的片段。每个任务一次、每日有上限，报告须与该结果匹配。 | 免费 |
 | `fix_citations` | 把文内引用和参考文献列表转成 APA 7、MLA 9、Harvard、Chicago、IEEE、Vancouver、GB/T 7714、AMA、ACS 或 OSCOLA。正文不动。 | 是 |
-| `condense_document` | 把 `.docx` 缩写到目标字数，保留结构和引文。 | 是 |
+| `condense_document` | 把 `.docx` 缩写到目标字数，或只缩选定的段落、各段单独设字数，保留结构和引文。可以改写句子来缩，也可以整句删去价值低的句子、其余原文不动。 | 是 |
 | `translate_document` | 在 12 种语言之间翻译 `.docx`/`.pdf`/`.pptx`/`.xlsx`/`.epub`/`.html`/`.txt`，保持排版。 | 是 |
 | `read_detection_report` | 读 Turnitin/iThenticate 的 AI Writing 报告：总体 AI 率与被标出的段落。 | 免费 |
 | `check_job` | 查任务并下载结果。 | 免费 |
+| `list_jobs` | 列出你的文档任务，最新的在前，附状态和积分。 | 免费 |
+| `cancel_job` | 取消排队中或运行中的任务，冻结的积分退回。 | 免费 |
+| `retry_job` | 按原来的设置重跑失败或已取消的任务。 | 是 |
 | `get_credit_balance` | 剩余积分。 | 免费 |
 | `start_project` | 把调研、数据分析或写作任务交给 HumanPen 的云端 Agent，本地文件作为输入：它们先和你确认需求、给出方案，再动手、经审核后交付文件。需要创建时勾选了「发起项目」的密钥。 | 确认方案后 |
 | `get_project` | 项目进行到哪一步：需要你做什么、需求确认的问题或方案、Agent 最近的一条消息、交付情况。 | 免费 |
@@ -238,7 +241,7 @@ Turnitin 打印的是 `*` 而不是数字——这一档它拒绝给出具体数
 ## 隐私政策
 
 传给工具的文档会经 HTTPS 上传到 HumanPen 的 API（`api.humanpen.net`）处理；
-结果写回你的磁盘，已处理文件在服务端保留约 7 天，供 `check_job` 和免费再降
+结果写回你的磁盘，已处理文件在服务端保留约 7 天，供 `check_job`、`retry_job` 和免费再降
 一次找回。文档内容永远不会进入模型上下文。完整政策（收集什么、保留多久、
 如何联系）见 <https://humanpen.net/legal/privacy>。
 

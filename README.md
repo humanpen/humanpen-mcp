@@ -201,13 +201,16 @@ Any MCP client works: this is a plain stdio server started by
 
 | Tool | What it does | Credits |
 | --- | --- | --- |
-| `humanize_document` | Rewrite a `.docx`/`.pptx` to read as human-written and score lower on AI detectors. Optionally take a detection report to rewrite only its flagged passages. Length can be held to a whole-document word range, or to per-passage ranges (experimental — limiting words weakens AI-rate reduction). | yes |
+| `humanize_document` | Rewrite a `.docx`/`.pptx` to read as human-written and score lower on AI detectors. Optionally take a detection report, or passages you choose, to rewrite only those. Length can be held to a whole-document word range, or to per-passage ranges (experimental — limiting words weakens AI-rate reduction). | yes |
 | `free_rehumanize` | Continue a finished `humanize_document` job for **free**: upload a fresh detection report for its result and only the still-flagged passages are rewritten. Once per job, with a daily cap; the report must match that result. | free |
 | `fix_citations` | Convert in-text citations and the reference list to APA 7, MLA 9, Harvard, Chicago, IEEE, Vancouver, GB/T 7714, AMA, ACS or OSCOLA. Body text untouched. | yes |
-| `condense_document` | Shorten a `.docx` to a target word count, keeping structure and citations. | yes |
+| `condense_document` | Shorten a `.docx` to a target word count, or only chosen passages, each to its own budget, keeping structure and citations. Condense by rewriting sentences, or by deleting whole low-value sentences and keeping the rest verbatim. | yes |
 | `translate_document` | Translate `.docx`/`.pdf`/`.pptx`/`.xlsx`/`.epub`/`.html`/`.txt` between 12 languages, keeping layout. | yes |
 | `read_detection_report` | Read a Turnitin or iThenticate AI Writing report: overall AI percentage and the flagged passages. | free |
 | `check_job` | Look up a job and download its result. | free |
+| `list_jobs` | List your document jobs, newest first, with their status and credits. | free |
+| `cancel_job` | Cancel a queued or running job; its reserved credits are returned. | free |
+| `retry_job` | Run a failed or cancelled job again with the same settings. | yes |
 | `get_credit_balance` | Credits remaining. | free |
 | `start_project` | Hand a research, data analysis or writing task to HumanPen's cloud agents, with local files as its input: they scope it with you, propose a plan, do the work, have it reviewed and deliver files. Needs a key created with **Research projects** ticked. | once a plan is confirmed |
 | `get_project` | Where a project stands: what it needs from you, the scoping questions or the plan, the agents' last message, the deliveries. | free |
@@ -251,8 +254,8 @@ No. It uploads the file and answers with a path. A 40-page paper costs no tokens
 
 Documents you pass to a tool are uploaded over HTTPS to HumanPen's API
 (`api.humanpen.net`) for processing; results are written back to your disk, and
-processed files are kept server-side for about 7 days so `check_job` and the
-free re-humanize pass can find them. Document contents never enter the model's
+processed files are kept server-side for about 7 days so `check_job`, `retry_job`
+and the free re-humanize pass can find them. Document contents never enter the model's
 context. The full policy — what is collected, retention, and how to reach us —
 is at <https://humanpen.net/legal/privacy>.
 

@@ -185,7 +185,7 @@ async function runFreeRehumanize(
 const WORD_SEGMENTS = z
   .array(
     z.object({
-      text: z.string().min(1).describe('The exact flagged passage text to bound'),
+      text: z.string().min(1).describe('A passage, copied exactly from the document'),
       min_words: z.number().int().positive().optional().describe('Lower word bound for this passage once rewritten'),
       max_words: z.number().int().positive().optional().describe('Upper word bound for this passage once rewritten'),
     }),
@@ -209,10 +209,11 @@ function encodeSegments(
 // different parameters. It mirrors the API, which has one endpoint each for
 // the same reason.
 //
-// Annotations, for clients that gate on them: none of these tools destroys
-// data - every writer only adds a new file beside an existing one - but only
-// the two lookups are read-only. destructiveHint defaults to true when a tool
-// is not read-only, so the explicit false is the half that carries information.
+// Annotations, for clients that gate on them: no tool destroys data - every
+// writer only adds a new file beside an existing one - and only the lookups are
+// read-only. destructiveHint defaults to true when a tool is not read-only, so
+// the explicit false is the half that carries information; cancel_job keeps
+// true, since it stops work that cannot be resumed (retry_job starts it over).
 
 server.registerTool(
   'humanize_document',
@@ -222,7 +223,7 @@ server.registerTool(
     description:
       'Rewrite a .docx or .pptx so it reads as human-written and scores lower on AI detectors, ' +
       'keeping meaning, citations, tables and layout. Optionally pass a Turnitin/iThenticate AI ' +
-      'report to rewrite only the passages it flagged. If a fresh report still flags the result, ' +
+      'report, or passages of your own (segments), to rewrite only those. If a fresh report still flags the result, ' +
       'run this tool again on the rewritten file with that new report - only the still-flagged ' +
       'passages are touched, and balanced remains the right strategy for the second pass. ' +
       'Saves the result next to the source and ' +
@@ -248,10 +249,11 @@ server.registerTool(
         .describe('Upper word bound for the rewritten document (optional; omit for no limit). Same ' +
           'experimental caveat and exclusivity as min_words.'),
       segments: WORD_SEGMENTS.optional()
-        .describe('Per-passage word control (optional): each item is a flagged passage plus its own ' +
-          'min_words/max_words. Get the passage texts from read_detection_report and pass report_path ' +
-          'alongside so the report defines scope. Experimental, same caveat as min_words. Cannot combine ' +
-          'with the whole-document min_words/max_words.'),
+        .describe('Rewrite only these passages (optional), each copied exactly from the document, with its own ' +
+          'min_words/max_words if wanted. Alone they set the scope; with report_path, take them from ' +
+          'read_detection_report. A paragraph is the smallest unit: each passage is widened to its whole ' +
+          'paragraph, and billed as such. Word bounds are experimental, same caveat as min_words. Cannot ' +
+          'combine with the whole-document min_words/max_words.'),
     },
   },
   async ({ document_path, strategy, report_path, instructions, output_path, wait_seconds, min_words, max_words, segments }) => {
@@ -304,6 +306,8 @@ server.registerTool(
     inputSchema: {
       job_id: z.string().describe('The finished humanize job to continue (its job_id from humanize_document/check_job)'),
       report_path: z.string().describe("Absolute path to the fresh Turnitin/iThenticate report for that job's result"),
+      strategy: z.enum(['balanced', 'aggressive']).optional()
+        .describe('Rewriting intensity (default balanced, the recommended choice for a continuation)'),
       segments: WORD_SEGMENTS.optional()
         .describe('Per-passage word control for the still-flagged passages (optional), same shape and ' +
           'experimental caveat as humanize_document.segments'),
@@ -312,11 +316,11 @@ server.registerTool(
       wait_seconds: z.number().optional().describe(`How long to wait before returning a job id (default ${DEFAULT_WAIT_SECONDS})`),
     },
   },
-  async ({ job_id, report_path, segments, instructions, output_path, wait_seconds }) =>
+  async ({ job_id, report_path, strategy, segments, instructions, output_path, wait_seconds }) =>
     runFreeRehumanize(
       job_id,
       report_path,
-      { additional_instructions: instructions, segments: encodeSegments(segments) },
+      { strategy, additional_instructions: instructions, segments: encodeSegments(segments) },
       { outputPath: output_path, waitSeconds: wait_seconds },
     ),
 );
@@ -355,23 +359,55 @@ server.registerTool(
     title: 'Condense a document',
     annotations: { readOnlyHint: false, destructiveHint: false },
     description:
-      'Shorten a .docx to a target word count, keeping meaning, structure and citations. Saves the ' +
-      'result next to the source and returns its path. COSTS CREDITS at 20 per 1,000 words processed (10 minimum) - say so and get agreement first.',
+      'Shorten a .docx, keeping meaning, structure and citations: the whole document to max_words, or only ' +
+      'chosen passages (segments), each to its own budget. Saves the result next to the source and returns its ' +
+      'path. COSTS CREDITS at 20 per 1,000 words processed (10 minimum) - say so and get agreement first.',
     inputSchema: {
       document_path: z.string().describe('Absolute path to the .docx'),
-      max_words: z.number().int().positive().describe('Target word count for the whole document'),
+      max_words: z.number().int().positive().optional()
+        .describe('Target word count for the whole document (or use segments)'),
+      segments: z
+        .array(
+          z.object({
+            text: z.string().min(1).describe('A passage to shorten, copied exactly from the document'),
+            max_words: z.number().int().positive().describe('Word budget for this passage'),
+          }),
+        )
+        .min(1)
+        .optional()
+        .describe('Shorten only these passages, each to its own budget, instead of max_words. A paragraph is ' +
+          'the smallest unit: each passage is widened to its whole paragraph.'),
+      mode: z
+        .enum(['rewrite', 'delete'])
+        .optional()
+        .describe('rewrite (default) condenses sentences in place; delete removes whole low-value sentences ' +
+          'and keeps every other word verbatim'),
       instructions: z.string().optional().describe('Extra requirements for this job'),
       output_path: z.string().optional().describe('Where to write the result; defaults to beside the source'),
       wait_seconds: z.number().optional().describe(`How long to wait before returning a job id (default ${DEFAULT_WAIT_SECONDS})`),
     },
   },
-  async ({ document_path, max_words, instructions, output_path, wait_seconds }) =>
-    runOperation(
+  async ({ document_path, max_words, segments, mode, instructions, output_path, wait_seconds }) => {
+    // The API takes one target or the other; refuse a mix (or neither) here, before the upload.
+    if ((max_words === undefined) === (segments === undefined)) {
+      return failure(new HumanPenError(
+        'Give either max_words (the whole document) or segments (chosen passages, each with its own budget), ' +
+          'not both and not neither.',
+        'INVALID_WORD_BUDGET'));
+    }
+    return runOperation(
       'condense',
       document_path,
-      { max_words: String(max_words), additional_instructions: instructions },
+      {
+        max_words: max_words !== undefined ? String(max_words) : undefined,
+        segments: segments !== undefined ? JSON.stringify(segments.map((s) => ({ text: s.text, max_words: s.max_words })))
+          : undefined,
+        mode,
+        additional_instructions: instructions,
+      },
       { outputPath: output_path, waitSeconds: wait_seconds },
-    ),
+    );
+  },
 );
 
 server.registerTool(
@@ -471,6 +507,108 @@ server.registerTool(
         outputPath = await api().downloadResult(job, document_path ?? output_path!, output_path);
       }
       return text(describeJob(job, outputPath));
+    } catch (cause) {
+      return failure(cause);
+    }
+  },
+);
+
+/** One line of a job list: what tells jobs apart, and what a next step needs. */
+function summarizeJob(job: Job) {
+  return {
+    job_id: job.job_id,
+    operation: job.operation,
+    status: job.status,
+    progress_percent: job.progress_percent,
+    file: job.source?.filename ?? null,
+    credits_charged: job.credits?.charged ?? null,
+    created_at: job.created_at,
+    error: job.error?.code ?? null,
+  };
+}
+
+server.registerTool(
+  'list_jobs',
+  {
+    title: 'List jobs',
+    annotations: { readOnlyHint: true },
+    description:
+      "List this account's document jobs, newest first, with their status and credits - to find a job id for " +
+      'check_job, cancel_job or retry_job. Free.',
+    inputSchema: {
+      type: z
+        .enum(['humanize', 'condense', 'citation_format_correction', 'translate'])
+        .optional()
+        .describe('Only jobs of this kind'),
+      limit: z.number().int().min(1).max(100).optional().describe('How many to return (default 20)'),
+      offset: z.number().int().min(0).optional().describe('How many to skip, for the next page'),
+    },
+  },
+  async ({ type, limit, offset }) => {
+    try {
+      const page = await api().listJobs({ type, limit: limit ?? 20, offset });
+      return text({ total: page.total, has_more: page.has_more, jobs: page.items.map(summarizeJob) });
+    } catch (cause) {
+      return failure(cause);
+    }
+  },
+);
+
+server.registerTool(
+  'cancel_job',
+  {
+    title: 'Cancel a job',
+    annotations: { readOnlyHint: false, destructiveHint: true },
+    description:
+      'Cancel a document job that is still queued or running. Its reserved credits are returned - a cancelled ' +
+      'job is never charged - and retry_job can run it again later. Free.',
+    inputSchema: {
+      job_id: z.string().describe('The job to cancel'),
+    },
+  },
+  async ({ job_id }) => {
+    try {
+      return text(describeJob(await api().cancelJob(job_id)));
+    } catch (cause) {
+      return failure(cause);
+    }
+  },
+);
+
+server.registerTool(
+  'retry_job',
+  {
+    title: 'Retry a job',
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    description:
+      'Run a failed or cancelled document job again with the same settings, from its stored source (kept about ' +
+      '7 days). Pass document_path to wait and save the result there, as the other tools do. COSTS CREDITS like ' +
+      'the original job - say so and get agreement first.',
+    inputSchema: {
+      job_id: z.string().describe('The failed or cancelled job to run again'),
+      document_path: z
+        .string()
+        .optional()
+        .describe('The original document, so the result is saved beside it and named after it'),
+      output_path: z.string().optional().describe('Where to write the result'),
+      wait_seconds: z.number().optional().describe(`How long to wait before returning (default ${DEFAULT_WAIT_SECONDS})`),
+    },
+  },
+  async ({ job_id, document_path, output_path, wait_seconds }) => {
+    try {
+      const job = await api().retryJob(job_id);
+      const anchor = document_path ?? output_path;
+      if (!anchor) {
+        return text({
+          ...describeJob(job),
+          note: 'Running again. Call check_job with this job_id, and the document path, to follow it and save the result.',
+        });
+      }
+      const receipt: JobReceipt = {
+        job_id: job.job_id, operation: job.operation, status: job.status,
+        credits_frozen: job.credits?.frozen ?? 0, created_at: job.created_at,
+      };
+      return await awaitAndDownload(receipt, anchor, { outputPath: output_path, waitSeconds: wait_seconds });
     } catch (cause) {
       return failure(cause);
     }

@@ -92,16 +92,17 @@ const listed = await call('tools/list', {});
 const tools = (listed.result?.tools ?? []).map((tool) => tool.name);
 console.log(`  tools: ${tools.join(', ')}`);
 const expected = [
-  'humanize_document', 'fix_citations', 'condense_document',
-  'translate_document', 'read_detection_report', 'check_job', 'get_credit_balance',
+  'humanize_document', 'free_rehumanize', 'fix_citations', 'condense_document',
+  'translate_document', 'read_detection_report', 'check_job', 'list_jobs', 'cancel_job', 'retry_job',
+  'get_credit_balance',
   'start_project', 'get_project', 'wait_for_project', 'act_on_project', 'message_project', 'download_delivery',
 ];
-check('all thirteen tools registered', expected.every((name) => tools.includes(name)),
+check(`all ${expected.length} tools registered`, expected.every((name) => tools.includes(name)),
   expected.filter((name) => !tools.includes(name)).join(',') || 'none missing');
 const described = (listed.result?.tools ?? []).every((tool) => tool.description?.length > 40);
 check('every tool carries a description a model can select on', described);
 const costed = (listed.result?.tools ?? [])
-  .filter((tool) => /humanize_document|fix_citations|condense_document|translate_document|start_project|act_on_project|message_project/
+  .filter((tool) => /humanize_document|fix_citations|condense_document|translate_document|retry_job|start_project|act_on_project|message_project/
     .test(tool.name))
   .every((tool) => /COSTS CREDITS/.test(tool.description ?? ''));
 check('the spending tools say so in their description', costed);

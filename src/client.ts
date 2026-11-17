@@ -45,6 +45,9 @@ export type Job = {
   finished_at: string | null;
 };
 
+/** A page of the account's jobs, newest first (GET /jobs). */
+export type JobList = { items: Job[]; total: number; limit: number; offset: number; has_more: boolean };
+
 export type JobReceipt = {
   job_id: string;
   operation: string;
@@ -253,6 +256,25 @@ export class HumanPenClient {
       if (value !== undefined && value !== '') form.append(name, value);
     }
     return this.request<JobReceipt>('POST', `/jobs/${parentJobId}/free-rehumanize`, form);
+  }
+
+  /** A page of this account's jobs, newest first; `type` narrows it to one kind of job. */
+  async listJobs(options: { limit?: number; offset?: number; type?: string } = {}): Promise<JobList> {
+    const query = new URLSearchParams();
+    if (options.limit !== undefined) query.set('limit', String(options.limit));
+    if (options.offset !== undefined) query.set('offset', String(options.offset));
+    if (options.type) query.set('type', options.type);
+    return this.request<JobList>('GET', `/jobs?${query.toString()}`);
+  }
+
+  /** Cancel a queued or running job. The API returns the credits it reserved: a cancelled job is never charged. */
+  async cancelJob(jobId: string): Promise<Job> {
+    return this.request<Job>('POST', `/jobs/${jobId}/cancel`);
+  }
+
+  /** Run a failed or cancelled job again from its stored source, with the same settings; credits are reserved anew. */
+  async retryJob(jobId: string): Promise<Job> {
+    return this.request<Job>('POST', `/jobs/${jobId}/retry`);
   }
 
   async getJob(jobId: string): Promise<Job> {
