@@ -209,7 +209,7 @@ cd humanpen-mcp && npm install && npm run build
 | `get_project` | 项目进行到哪一步：需要你做什么、需求确认的问题或方案、Agent 最近的一条消息、交付情况。 | 免费 |
 | `wait_for_project` | 等到项目需要你处理，或已经完成。 | 免费 |
 | `act_on_project` | 确认方案、回答问题、追加、按现状交付、暂停、继续、取消、反馈。 | 确认方案、追加时 |
-| `message_project` | 给 Agent 发消息并附文件：补充背景，或交付后提出修改（开始新一轮）。 | 是 |
+| `message_project` | 给 Agent 发消息并附文件：补充背景，或交付后提出修改（开始新一轮）。Agent 工作时会在做完当前这一步后读到；`deliver_now` 则立即送达。 | 是 |
 | `download_delivery` | 把交付的某个版本存成 zip。 | 免费 |
 
 ## 三件值得知道的事
