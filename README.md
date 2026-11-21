@@ -219,6 +219,8 @@ Any MCP client works: this is a plain stdio server started by
 | `message_project` | Write to the agents, with files: more context, or changes after a delivery (a new round). While they work they read it after the step they are on; `deliver_now` hands it over at once. | yes |
 | `download_delivery` | Save a delivered version as a zip. | free |
 | `rename_project` | Give a project a new name. `start_project` takes a `title` too; without one, a name is made from the request. | free |
+| `list_projects` | Your projects, newest first, with their state and what each needs from you: finds a project started in another conversation. | free |
+| `delete_project` | Delete a project with its files and deliveries, stopping any work under way. It cannot be undone. | free; credits held are settled by use |
 
 ## Three things worth knowing
 

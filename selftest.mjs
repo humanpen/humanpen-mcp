@@ -96,7 +96,7 @@ const expected = [
   'translate_document', 'read_detection_report', 'check_job', 'list_jobs', 'cancel_job', 'retry_job',
   'get_credit_balance',
   'start_project', 'get_project', 'wait_for_project', 'act_on_project', 'message_project', 'download_delivery',
-  'rename_project',
+  'rename_project', 'list_projects', 'delete_project',
 ];
 check(`all ${expected.length} tools registered`, expected.every((name) => tools.includes(name)),
   expected.filter((name) => !tools.includes(name)).join(',') || 'none missing');

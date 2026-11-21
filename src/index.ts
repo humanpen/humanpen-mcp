@@ -923,6 +923,66 @@ server.registerTool(
   },
 );
 
+/** One project in a list: what tells projects apart, and what a next step needs. */
+function summarizeProject(project: Project) {
+  return {
+    project_id: project.id,
+    title: project.title,
+    state: project.state,
+    needs_from_user: project.required_input?.type ?? null,
+    created_at: project.created_at ?? null,
+    updated_at: project.updated_at ?? null,
+  };
+}
+
+server.registerTool(
+  'list_projects',
+  {
+    title: 'List research projects',
+    annotations: { readOnlyHint: true },
+    description:
+      "List this account's research projects, newest first, with their state and what each needs from the user - " +
+      'to find a project id, for instance of a project started in another conversation. Free.',
+    inputSchema: {
+      limit: z.number().int().min(1).max(100).optional().describe('How many to return (default 20)'),
+      offset: z.number().int().min(0).optional().describe('How many to skip, for the next page'),
+    },
+  },
+  async ({ limit, offset }) => {
+    try {
+      const page = await api().listProjects({ limit, offset });
+      const projects = (page.items ?? []).map(summarizeProject);
+      const shown = (page.offset ?? offset ?? 0) + projects.length;
+      return text({ total: page.total, has_more: shown < page.total, projects });
+    } catch (cause) {
+      return failure(cause);
+    }
+  },
+);
+
+server.registerTool(
+  'delete_project',
+  {
+    title: 'Delete a research project',
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+    description:
+      'Delete a research project for good: work under way stops, and the project with its files and deliveries is ' +
+      'deleted; credits held for it are settled by what was used. Only when the user asked to delete this ' +
+      'project - it cannot be undone.',
+    inputSchema: {
+      project_id: z.string().describe('The project id'),
+    },
+  },
+  async ({ project_id }) => {
+    try {
+      const gone = await api().deleteProject(project_id);
+      return text({ project_id: gone.id ?? project_id, deleted: gone.deleted ?? true });
+    } catch (cause) {
+      return failure(cause);
+    }
+  },
+);
+
 async function main() {
   await server.connect(new StdioServerTransport());
 }

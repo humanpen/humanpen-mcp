@@ -212,6 +212,8 @@ cd humanpen-mcp && npm install && npm run build
 | `message_project` | 给 Agent 发消息并附文件：补充背景，或交付后提出修改（开始新一轮）。Agent 工作时会在做完当前这一步后读到；`deliver_now` 则立即送达。 | 是 |
 | `download_delivery` | 把交付的某个版本存成 zip。 | 免费 |
 | `rename_project` | 给项目改名。`start_project` 也能用 `title` 起名；不填就按需求自动起名。 | 免费 |
+| `list_projects` | 列出你的项目，最新的在前，带状态和每个项目在等你做什么；换了对话也能找回之前的项目。 | 免费 |
+| `delete_project` | 删除项目及其文件和交付，正在进行的工作会停止。删除后无法恢复。 | 免费；已冻结的积分按实际用量结算 |
 
 ## 三件值得知道的事
 

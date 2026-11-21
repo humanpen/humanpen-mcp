@@ -98,7 +98,11 @@ export type Project = {
   billing?: Record<string, unknown>;
   consumed_credits?: number | null;
   deletes_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 };
+
+export type ProjectList = { items: Project[]; total: number; limit?: number; offset?: number };
 
 export type ProjectEvent = { seq: number; type: string; data: Record<string, unknown>; created_at: string | null };
 
@@ -462,6 +466,15 @@ export class HumanPenClient {
 
   async renameProject(projectId: string, title: string): Promise<{ id: string; title: string | null }> {
     return this.json('PATCH', `/agent/projects/${projectId}`, { title }, randomUUID());
+  }
+
+  async listProjects(options: { limit?: number; offset?: number } = {}): Promise<ProjectList> {
+    const query = new URLSearchParams({ limit: String(options.limit ?? 20), offset: String(options.offset ?? 0) });
+    return this.request<ProjectList>('GET', `/agent/projects?${query}`);
+  }
+
+  async deleteProject(projectId: string): Promise<{ id: string; deleted: boolean }> {
+    return this.json('DELETE', `/agent/projects/${projectId}`, undefined, randomUUID());
   }
 
   async actOnProject(projectId: string, body: Record<string, unknown>): Promise<{ seq: number | null }> {
