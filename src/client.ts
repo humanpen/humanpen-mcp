@@ -460,6 +460,10 @@ export class HumanPenClient {
     return this.request<Project>('GET', `/agent/projects/${projectId}/status`);
   }
 
+  async renameProject(projectId: string, title: string): Promise<{ id: string; title: string | null }> {
+    return this.json('PATCH', `/agent/projects/${projectId}`, { title }, randomUUID());
+  }
+
   async actOnProject(projectId: string, body: Record<string, unknown>): Promise<{ seq: number | null }> {
     return this.json('POST', `/agent/projects/${projectId}/actions`, body, randomUUID());
   }

@@ -902,6 +902,27 @@ server.registerTool(
   },
 );
 
+server.registerTool(
+  'rename_project',
+  {
+    title: 'Rename a research project',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    description: 'Give a research project a new name, the one the user chose; it shows wherever the project is listed. Free.',
+    inputSchema: {
+      project_id: z.string().describe('The project id'),
+      title: z.string().min(1).max(256).describe('The new name'),
+    },
+  },
+  async ({ project_id, title }) => {
+    try {
+      const settings = await api().renameProject(project_id, title);
+      return text({ project_id: settings.id ?? project_id, title: settings.title ?? title });
+    } catch (cause) {
+      return failure(cause);
+    }
+  },
+);
+
 async function main() {
   await server.connect(new StdioServerTransport());
 }

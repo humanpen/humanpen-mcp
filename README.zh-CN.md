@@ -211,6 +211,7 @@ cd humanpen-mcp && npm install && npm run build
 | `act_on_project` | 确认方案、回答问题、追加、按现状交付、暂停、继续、取消、反馈。 | 确认方案、追加时 |
 | `message_project` | 给 Agent 发消息并附文件：补充背景，或交付后提出修改（开始新一轮）。Agent 工作时会在做完当前这一步后读到；`deliver_now` 则立即送达。 | 是 |
 | `download_delivery` | 把交付的某个版本存成 zip。 | 免费 |
+| `rename_project` | 给项目改名。`start_project` 也能用 `title` 起名；不填就按需求自动起名。 | 免费 |
 
 ## 三件值得知道的事
 
